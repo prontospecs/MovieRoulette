@@ -90,7 +90,10 @@
     justify-content: center;
     padding: 32px 16px 64px;
   }
-  .wrap { width: 100%; max-width: 1040px; }
+  .wrap { width: 100%; max-width: 1040px; transition: max-width .2s ease; }
+  /* Когда открыта "Страничка киномана" на компьютере, расширяем общий контейнер
+     ровно на ширину новой колонки, чтобы жанры и рулетка не сжимались. */
+  .wrap.with-stats { max-width: 1384px; }
   header { text-align: center; margin-bottom: 30px; }
   .media-toggle {
     display: inline-flex; gap: 4px; padding: 4px;
@@ -113,10 +116,25 @@
   .subtitle { color: var(--muted); font-size: 14px; }
 
   .layout { display: grid; grid-template-columns: 280px 1fr; gap: 24px; }
+  /* На компьютере "Страничка киномана" — не всплывающее окошко, а такая же
+     полноценная панель, как панель жанров слева; добавляет третью колонку,
+     когда открыта. На телефоне вместо этого используется модалка ниже —
+     см. JS: statsBtn выбирает поведение по той же ширине экрана (780px). */
+  .layout.with-stats { grid-template-columns: 320px 280px 1fr; }
+  /* order:-1 переносит панель статистики в первую колонку (ближе к левому
+     краю экрана), не трогая порядок в HTML и не сжимая рулетку. */
+  .layout.with-stats .stats-panel { order: -1; }
+  .stats-panel { display: flex; flex-direction: column; }
+  .stats-panel-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .stats-panel-header h2 { margin: 0; }
+  .stats-panel-header button { background: none; border: none; color: var(--muted); font-size: 22px; cursor: pointer; line-height: 1; }
+  .stats-panel-header button:hover { color: var(--text); }
+  .stats-panel .stats-body { padding: 0; overflow-y: visible; }
   @media (max-width: 780px) {
-    .layout { grid-template-columns: 1fr; gap: 18px; }
+    .layout, .layout.with-stats { grid-template-columns: 1fr; gap: 18px; }
     /* На телефоне сразу показываем рулетку и кнопку, фильтры — ниже, чтобы не листать */
     .stage { order: -1; }
+    .stats-panel { display: none !important; }
   }
 
   .panel {
@@ -250,15 +268,17 @@
     top: calc(22px + env(safe-area-inset-top, 0px));
     left: calc(22px + env(safe-area-inset-left, 0px));
     z-index: 500;
+    display: flex; flex-wrap: wrap; gap: 8px;
+    max-width: calc(100vw - 24px);
   }
-  .auth-btn {
+  .auth-btn, .stats-btn {
     padding: 9px 18px; border-radius: 999px;
     background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
     font-size: 12px; font-weight: 600; cursor: pointer;
     touch-action: manipulation; -webkit-tap-highlight-color: transparent;
     max-width: 42vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .auth-btn:hover { border-color: var(--gold); color: var(--gold-2); }
+  .auth-btn:hover, .stats-btn:hover { border-color: var(--gold); color: var(--gold-2); }
   .auth-btn.logged-in { border-color: rgba(120,200,120,.4); color: #8fe08f; }
 
   .auth-box { max-width: 360px; }
@@ -276,6 +296,37 @@
   .auth-switch { font-size: 12.5px; color: var(--muted); text-align: center; }
   .auth-switch a { color: var(--gold-2); text-decoration: none; }
   .auth-switch a:hover { text-decoration: underline; }
+
+  .stats-box { max-width: 640px; }
+  .stats-body { padding: 20px 22px; overflow-y: auto; }
+  .stats-empty { color: var(--muted); font-size: 13px; text-align: center; padding: 30px 0; }
+  .stats-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 10px; margin-bottom: 22px;
+  }
+  .stat-tile {
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px;
+    padding: 12px 14px; text-align: center;
+  }
+  .stat-tile .stat-value { font-size: 22px; font-weight: 800; color: var(--gold-2); line-height: 1.2; }
+  .stat-tile .stat-label { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .stats-section-title { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; margin: 0 0 10px; }
+  .stats-bars { display: flex; flex-direction: column; gap: 8px; margin-bottom: 22px; }
+  .stats-bar-row { display: flex; align-items: center; gap: 10px; font-size: 12.5px; }
+  .stats-bar-label { width: 130px; flex-shrink: 0; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .stats-bar-track { flex: 1; height: 8px; background: rgba(255,255,255,0.06); border-radius: 999px; overflow: hidden; }
+  .stats-bar-fill { height: 100%; background: linear-gradient(90deg, var(--gold), var(--gold-2)); border-radius: 999px; }
+  .stats-bar-pct { width: 40px; flex-shrink: 0; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .stats-facts { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #d6d9e2; line-height: 1.5; }
+  @media (max-width: 640px) {
+    .stats-body { padding: 16px; }
+    .stats-grid { grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 8px; margin-bottom: 18px; }
+    .stat-tile { padding: 10px; }
+    .stat-tile .stat-value { font-size: 18px; }
+    .stat-tile .stat-label { font-size: 10px; }
+    .stats-bar-label { width: 92px; font-size: 11.5px; }
+    .stats-facts { font-size: 12.5px; }
+  }
 
   .modal-overlay {
     position: fixed; inset: 0; background: rgba(0,0,0,.75);
@@ -308,6 +359,22 @@
     touch-action: manipulation; -webkit-tap-highlight-color: transparent;
   }
   .h-remove:hover { background: var(--danger); border-color: var(--danger); }
+  .h-watch-btn {
+    position: absolute; top: 5px; left: 5px; z-index: 2;
+    width: 24px; height: 24px; border-radius: 50%;
+    background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.15);
+    color: #fff; font-size: 12px; line-height: 1; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  }
+  .h-watch-btn:hover { background: rgba(120,200,120,.35); border-color: #8fe08f; }
+  .h-watched-badge {
+    position: absolute; top: 5px; left: 5px; z-index: 2;
+    width: 24px; height: 24px; border-radius: 50%;
+    background: rgba(120,200,120,.25); border: 1px solid #8fe08f;
+    color: #8fe08f; font-size: 12px; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+  }
   .modal-footer { padding: 14px 22px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; }
   .modal-footer button {
     padding: 8px 16px; border-radius: 10px; border: 1px solid rgba(255,107,107,.4);
@@ -477,6 +544,14 @@
   }
   .trailer-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 12px 24px rgba(230,184,79,.35); }
   .trailer-btn:disabled { opacity: .55; cursor: not-allowed; }
+  .watched-btn {
+    padding: 9px 18px; border-radius: 999px; border: 1px solid var(--border); cursor: pointer;
+    background: var(--panel-2); color: var(--text);
+    font-size: 13px; font-weight: 700; letter-spacing: .2px;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  }
+  .watched-btn:hover:not(:disabled) { border-color: #8fe08f; color: #8fe08f; }
+  .watched-btn.active { background: rgba(120,200,120,.16); border-color: #8fe08f; color: #8fe08f; cursor: default; }
   .trailer-box { max-width: 900px; }
   .trailer-body { background: #000; }
   .trailer-video-wrap {
@@ -553,7 +628,7 @@
       top: calc(12px + env(safe-area-inset-top, 0px));
       left: calc(12px + env(safe-area-inset-left, 0px));
     }
-    .auth-btn { padding: 7px 12px; font-size: 10.5px; max-width: 34vw; }
+    .auth-btn, .stats-btn { padding: 7px 12px; font-size: 10.5px; max-width: 44vw; }
 
     .panel { padding: 16px; border-radius: 16px; }
     .filter-block { margin-top: 16px; }
@@ -575,12 +650,18 @@
     .watch-heart svg { width: 17px; height: 17px; }
     .result-actions { gap: 10px; }
     .trailer-btn { width: 100%; padding: 12px 18px; font-size: 14px; }
+    /* Без width:100% — иначе под главной кнопкой трейлера получается ещё
+       один такой же большой блок, и вся карточка результата "мозолит глаза"
+       стопкой из четырёх крупных элементов. Компактная плашка по центру
+       смотрится второстепенным действием, каким она и является. */
+    .watched-btn { padding: 8px 16px; font-size: 12.5px; }
     .result-link { align-self: center; }
 
     .modal-overlay { padding: 12px; align-items: flex-end; }
     .modal-box { max-height: 88vh; border-radius: 18px 18px 0 0; }
     .modal-header { padding: 14px 16px; }
     .modal-body { padding: 14px 16px; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; }
+    .h-remove, .h-watch-btn, .h-watched-badge { width: 20px; height: 20px; font-size: 11px; }
     .modal-footer { padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); }
     .trailer-box { border-radius: 16px; max-height: none; }
     .trailer-body { padding-bottom: env(safe-area-inset-bottom, 0px); }
@@ -599,6 +680,7 @@
 <body>
 <div class="top-actions-left">
   <button class="auth-btn" id="authBtn" type="button">Войти</button>
+  <button class="stats-btn" id="statsBtn" type="button">📊 Статистика <span id="watchedCount">(0)</span></button>
 </div>
 
 <div class="top-actions">
@@ -613,13 +695,23 @@
       <button id="authCloseBtn" type="button" title="Закрыть">×</button>
     </div>
     <div class="auth-body">
-      <p class="auth-explainer">Аккаунт нужен только для одного: чтобы История просмотров и Избранное сохранялись в облаке и подтягивались на любом вашем устройстве, а не оставались только в этом браузере.</p>
+      <p class="auth-explainer">Аккаунт нужен для переноса всех данных между устройствами.</p>
       <input type="text" id="authLogin" class="select-field" placeholder="Логин" autocomplete="username">
       <input type="password" id="authPassword" class="select-field" placeholder="Пароль" autocomplete="current-password">
       <div class="auth-error hidden" id="authError"></div>
       <button class="auth-submit" id="authSubmitBtn" type="button">Войти</button>
       <div class="auth-switch"><span id="authSwitchText">Нет аккаунта?</span> <a href="#" id="authSwitchLink">Зарегистрироваться</a></div>
     </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="statsModal">
+  <div class="modal-box stats-box">
+    <div class="modal-header">
+      <h2>Страничка киномана</h2>
+      <button id="statsCloseBtn" type="button" title="Закрыть">×</button>
+    </div>
+    <div class="stats-body" id="statsBody"></div>
   </div>
 </div>
 
@@ -766,6 +858,7 @@
             <p class="result-overview" id="resOverview"></p>
             <div class="result-actions">
               <button class="trailer-btn" id="trailerBtn" type="button">▶ Смотреть трейлер</button>
+              <button class="watched-btn" id="markWatchedBtn" type="button" title="Отметить, что вы уже смотрели этот фильм раньше — даже если рулетка сама его вам не показывала">👁 Уже смотрел(а)</button>
               <a class="result-link kp-link" id="resKinopoiskLink" href="#" target="_blank" rel="noopener">Смотреть на Кинопоиске →</a>
               <a class="result-link" id="resLink" href="#" target="_blank" rel="noopener">Открыть страницу фильма на TMDb →</a>
             </div>
@@ -781,6 +874,14 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <div class="panel stats-panel hidden" id="statsPanel">
+      <div class="stats-panel-header">
+        <h2>Страничка киномана</h2>
+        <button id="statsPanelCloseBtn" type="button" title="Скрыть">×</button>
+      </div>
+      <div class="stats-body" id="statsBodyDesktop"></div>
     </div>
   </div>
 </div>
@@ -1033,6 +1134,90 @@
     if (currentResultMovie && currentResultMovie.id === id) updateWatchHeart(currentResultMovie);
   }
 
+  // --- "Страничка киномана": список реально просмотренных фильмов/сериалов
+  // и статистика по нему. Отдельно от Истории (та — просто лог того, что
+  // показывала рулетка) и от Избранного (то, что хотите посмотреть) — здесь
+  // именно то, что вы подтвердили как просмотренное, и на этом строится вся
+  // статистика ниже. Пометка "просмотрено" необратима из карточки — так
+  // список остаётся надёжной основой для цифр, а не случайно стирается.
+  const WATCHED_KEY = 'movieRouletteWatched_v1';
+
+  function loadWatchedFromStorage() {
+    try {
+      const raw = localStorage.getItem(WATCHED_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) { return []; }
+  }
+  function saveWatchedToStorage() {
+    try { localStorage.setItem(WATCHED_KEY, JSON.stringify(watchedMovies)); } catch (e) {}
+    syncToCloud();
+  }
+
+  let watchedMovies = loadWatchedFromStorage();
+  let watchedIds = new Set(watchedMovies.map(m => m.id));
+
+  function updateWatchedCount() {
+    const el = document.getElementById('watchedCount');
+    if (el) el.textContent = '(' + watchedMovies.length + ')';
+    const panel = document.getElementById('statsPanel');
+    const desktopBody = document.getElementById('statsBodyDesktop');
+    if (panel && desktopBody && !panel.classList.contains('hidden') && typeof renderStatsInto === 'function') {
+      renderStatsInto(desktopBody);
+    }
+  }
+
+  // Доп. запрос за полной карточкой фильма/сериала — только у неё есть
+  // длительность (runtime) и точная страна(-ы) производства; в списках
+  // discover-выдачи TMDb этих полей нет вообби. Делается один раз, в момент
+  // пометки "просмотрено" — не на каждый спин, так что не бьёт по лимитам.
+  async function fetchWatchEnrichment(movie) {
+    const tmdbType = movie.media_type === 'tv' ? 'tv' : 'movie';
+    try {
+      const data = await apiGet('/' + tmdbType + '/' + movie.id, {});
+      if (tmdbType === 'movie') {
+        return {
+          runtimeMinutes: data.runtime || 0,
+          countries: (data.production_countries || []).map(c => c.iso_3166_1)
+        };
+      }
+      const perEpisode = (data.episode_run_time && data.episode_run_time[0]) || 0;
+      const episodes = data.number_of_episodes || 0;
+      return {
+        runtimeMinutes: (perEpisode && episodes) ? perEpisode * episodes : perEpisode,
+        countries: data.origin_country || []
+      };
+    } catch (e) {
+      return { runtimeMinutes: 0, countries: [] };
+    }
+  }
+
+  function updateWatchedButton(movie) {
+    const btn = document.getElementById('markWatchedBtn');
+    if (!btn || !movie) return;
+    const done = watchedIds.has(movie.id);
+    btn.classList.toggle('active', done);
+    btn.textContent = done ? '✓ Просмотрено' : '👁 Уже смотрел(а)';
+  }
+
+  // Общая точка входа для пометки "просмотрено" — вызывается и с карточки
+  // результата (даже для фильма, который рулетка никогда не выдавала — если
+  // вы точно знаете, что уже смотрели его раньше), и из Избранного.
+  // Дополнительно добавляет фильм в Историю, чтобы он больше не выпадал.
+  async function markAsWatched(movie) {
+    if (!movie || watchedIds.has(movie.id)) return;
+    watchedIds.add(movie.id); // сразу — чтобы кнопка отреагировала мгновенно
+    updateWatchedButton(movie);
+
+    const enrichment = await fetchWatchEnrichment(movie);
+    const record = Object.assign({}, movie, enrichment, { watchedAt: new Date().toISOString() });
+    watchedMovies.unshift(record);
+    saveWatchedToStorage();
+    updateWatchedCount();
+    addToHistory(movie);
+    if (favoritesModal && !favoritesModal.classList.contains('hidden')) renderFavoritesModal();
+  }
+
   // --- Аккаунты (необязательно): вход по логину/паролю через Firebase,
   // чтобы История и Избранное подтягивались на любом устройстве. Без входа
   // всё как раньше работает только через localStorage этого браузера.
@@ -1140,7 +1325,7 @@
   // вошёл и это не мы сами только что скачали их оттуда же (иначе зацикливание).
   function syncToCloud() {
     if (!currentUser || syncingFromCloud || !window.AppAuth) return;
-    window.AppAuth.saveCloudData(currentUser.uid, { history: watchHistory, watchlist: watchlist }).catch(() => {});
+    window.AppAuth.saveCloudData(currentUser.uid, { history: watchHistory, watchlist: watchlist, watched: watchedMovies }).catch(() => {});
   }
 
   // window.AppAuth собирается в отдельном <script type="module"> в <head>, а
@@ -1163,19 +1348,23 @@
             // После входа облако — источник правды, локальные списки заменяются.
             watchHistory = Array.isArray(cloud.history) ? cloud.history : [];
             watchlist = Array.isArray(cloud.watchlist) ? cloud.watchlist : [];
+            watchedMovies = Array.isArray(cloud.watched) ? cloud.watched : [];
             seenIds = new Set(watchHistory.map(m => m.id));
             watchlistIds = new Set(watchlist.map(m => m.id));
+            watchedIds = new Set(watchedMovies.map(m => m.id));
             saveHistoryToStorage();
             saveWatchlistToStorage();
+            saveWatchedToStorage();
           } else {
             // Первый вход этого аккаунта — поднимаем в облако то, что уже
             // накопилось локально в этом браузере.
-            await window.AppAuth.saveCloudData(user.uid, { history: watchHistory, watchlist: watchlist });
+            await window.AppAuth.saveCloudData(user.uid, { history: watchHistory, watchlist: watchlist, watched: watchedMovies });
           }
           syncingFromCloud = false;
           updateHistoryCount();
           updateFavoritesCount();
-          if (currentResultMovie) updateWatchHeart(currentResultMovie);
+          updateWatchedCount();
+          if (currentResultMovie) { updateWatchHeart(currentResultMovie); updateWatchedButton(currentResultMovie); }
         } catch (e) {
           syncingFromCloud = false;
         }
@@ -1253,9 +1442,12 @@
     addPill(ANIME_KEY, 'Аниме');
   }
 
+  // "Аниме" сюда сознательно не добавляется: это отдельный узкий пул (по сути
+  // один жанр "Мультфильм" + Япония/Корея), и если включить его вместе со
+  // всеми остальными жанрами разом, он перетягивает на себя непропорционально
+  // много результатов. Если аниме нужно — выбирайте его плиткой отдельно.
   document.getElementById('selectAllBtn').addEventListener('click', () => {
     selectedGenres = new Set(GENRE_DEFS.map(def => def.key));
-    selectedGenres.add(ANIME_KEY);
     renderGenrePills();
   });
   document.getElementById('selectNoneBtn').addEventListener('click', () => {
@@ -1542,6 +1734,21 @@
     return !seenIds.has(m.id);
   }
 
+  // Выбирает спек случайно, но НЕ поровну между спеками — с вероятностью,
+  // пропорциональной размеру его пула (total_results). Раньше спек выбирался
+  // строго 50/50 (обычные жанры vs. Аниме), из-за чего крошечный пул Аниме
+  // (по сути один жанр "Мультфильм" + Япония/Корея) забирал половину всех
+  // спинов, даже когда реальных не-анимационных кандидатов были сотни тысяч.
+  function pickWeightedSpec(specStates) {
+    const totalWeight = specStates.reduce((sum, s) => sum + (s.first.total_results || 1), 0);
+    let r = Math.random() * totalWeight;
+    for (const s of specStates) {
+      r -= (s.first.total_results || 1);
+      if (r <= 0) return s;
+    }
+    return specStates[specStates.length - 1];
+  }
+
   // Пытается найти случайный ещё не показанный фильм/сериал. Страница №1 у
   // каждого спека используется ТОЛЬКО чтобы узнать total_pages — сам выбор
   // всегда идёт по-настоящему случайной странице (иначе рулетка постоянно
@@ -1577,7 +1784,7 @@
     specStates.forEach(s => collectVisual(s.first.results));
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      const state = specStates[Math.floor(Math.random() * specStates.length)];
+      const state = pickWeightedSpec(specStates);
       let page = Math.floor(Math.random() * state.maxPage) + 1;
       // стараемся не дёргать одну и ту же страницу дважды подряд за один спин
       let guard = 0;
@@ -1811,6 +2018,7 @@
     backdrop.style.backgroundImage = posterPath ? `url(${IMG_BASE}w780${posterPath})` : 'none';
 
     updateWatchHeart(movie);
+    updateWatchedButton(movie);
     document.getElementById('resPoster').src = movie.poster_path ? (IMG_BASE + 'w500' + movie.poster_path) : '';
     document.getElementById('resTitle').textContent = movie.title || movie.original_title || 'Без названия';
     document.getElementById('resYear').textContent = movie.release_date ? movie.release_date.slice(0, 4) : 'Год неизвестен';
@@ -1945,6 +2153,10 @@
     toggleWatchlist(currentResultMovie);
   });
 
+  document.getElementById('markWatchedBtn').addEventListener('click', () => {
+    markAsWatched(currentResultMovie);
+  });
+
   // --- Трейлер выпавшего фильма ---
   const trailerModal = document.getElementById('trailerModal');
   const trailerBody = document.getElementById('trailerBody');
@@ -2044,12 +2256,33 @@
       const item = document.createElement('div');
       item.className = 'history-item';
       const rating = (m.vote_average || 0).toFixed(1);
-      item.innerHTML = `<div class="h-poster-wrap"><button class="h-remove" type="button" title="Убрать из избранного">×</button><img src="${img}" alt=""></div><div class="h-title">${m.title || ''}</div><div class="h-meta"><span class="h-year">${year}</span><span class="h-rating">★ ${rating}</span></div>`;
-      item.querySelector('.h-remove').addEventListener('click', (e) => {
-        e.stopPropagation();
-        removeFromWatchlist(m.id);
-        renderFavoritesModal();
-      });
+      const isWatched = watchedIds.has(m.id);
+      // Если фильм уже отмечен просмотренным — крестик убираем совсем (нельзя
+      // случайно стереть то, на чём строится статистика), вместо него значок
+      // "просмотрено". Иначе — маленькая кнопка "отметить просмотренным".
+      const watchMark = isWatched
+        ? '<span class="h-watched-badge" title="Просмотрено">✓</span>'
+        : '<button class="h-watch-btn" type="button" title="Отметить просмотренным">👁</button>';
+      const removeBtn = isWatched
+        ? ''
+        : '<button class="h-remove" type="button" title="Убрать из избранного">×</button>';
+      item.innerHTML = `<div class="h-poster-wrap">${watchMark}${removeBtn}<img src="${img}" alt=""></div><div class="h-title">${m.title || ''}</div><div class="h-meta"><span class="h-year">${year}</span><span class="h-rating">★ ${rating}</span></div>`;
+      const removeEl = item.querySelector('.h-remove');
+      if (removeEl) {
+        removeEl.addEventListener('click', (e) => {
+          e.stopPropagation();
+          removeFromWatchlist(m.id);
+          renderFavoritesModal();
+        });
+      }
+      const watchBtn = item.querySelector('.h-watch-btn');
+      if (watchBtn) {
+        watchBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await markAsWatched(m);
+          renderFavoritesModal();
+        });
+      }
       item.addEventListener('click', () => {
         favoritesModal.classList.add('hidden');
         revealResult(m);
@@ -2079,6 +2312,144 @@
     renderFavoritesModal();
   });
 
+  // --- "Страничка киномана": статистика по просмотренному ---
+  const statsModal = document.getElementById('statsModal');
+  const statsBody = document.getElementById('statsBody');
+
+  function formatStatMinutes(mins) {
+    const n = Math.round(mins);
+    if (n <= 0) return '0 мин';
+    const h = Math.floor(n / 60);
+    const m = n % 60;
+    if (h === 0) return m + ' мин';
+    if (h < 24) return h + ' ч' + (m > 0 ? ' ' + m + ' мин' : '');
+    const d = Math.floor(h / 24);
+    const rh = h % 24;
+    return d + ' дн' + (rh > 0 ? ' ' + rh + ' ч' : '');
+  }
+
+  function computeStats() {
+    const total = watchedMovies.length;
+    if (total === 0) return null;
+
+    let movieCount = 0, tvCount = 0, totalMinutes = 0, ratingSum = 0, ratingCount = 0;
+    const genreCounts = {};
+    const countryCounts = {};
+    let best = null, longest = null;
+
+    watchedMovies.forEach(m => {
+      if (m.media_type === 'tv') tvCount++; else movieCount++;
+      totalMinutes += m.runtimeMinutes || 0;
+      if (m.vote_average) { ratingSum += m.vote_average; ratingCount++; }
+      (m.genre_ids || []).forEach(id => {
+        const label = GENRE_ID_LABELS[id];
+        if (label) genreCounts[label] = (genreCounts[label] || 0) + 1;
+      });
+      (m.countries || m.origin_country || []).forEach(code => {
+        const name = COUNTRY_NAME_BY_CODE[code] || code;
+        countryCounts[name] = (countryCounts[name] || 0) + 1;
+      });
+      if (m.vote_average && (!best || m.vote_average > best.vote_average)) best = m;
+      if (m.runtimeMinutes && (!longest || m.runtimeMinutes > longest.runtimeMinutes)) longest = m;
+    });
+
+    const topGenres = Object.entries(genreCounts).sort((a, b) => b[1] - a[1]).slice(0, 6)
+      .map(([label, count]) => ({ label, count, pct: Math.round(count / total * 100) }));
+    const topCountries = Object.entries(countryCounts).sort((a, b) => b[1] - a[1]).slice(0, 6)
+      .map(([label, count]) => ({ label, count, pct: Math.round(count / total * 100) }));
+
+    return {
+      total, movieCount, tvCount, totalMinutes,
+      avgRating: ratingCount ? (ratingSum / ratingCount) : 0,
+      moviePct: Math.round(movieCount / total * 100),
+      tvPct: Math.round(tvCount / total * 100),
+      topGenres, topCountries, best, longest
+    };
+  }
+
+  function renderStatsInto(container) {
+    const stats = computeStats();
+    if (!stats) {
+      container.innerHTML = '<div class="stats-empty">Пока пусто — отметьте фильм или сериал как просмотренный (кнопка «Уже смотрел(а)» на карточке результата или значок 👁 в Избранном), и здесь появится статистика.</div>';
+      return;
+    }
+
+    const tilesHtml = `
+      <div class="stats-grid">
+        <div class="stat-tile"><div class="stat-value">${stats.total}</div><div class="stat-label">просмотрено всего</div></div>
+        <div class="stat-tile"><div class="stat-value">${formatStatMinutes(stats.totalMinutes)}</div><div class="stat-label">суммарное время</div></div>
+        <div class="stat-tile"><div class="stat-value">${stats.avgRating.toFixed(1)}</div><div class="stat-label">средний рейтинг</div></div>
+        <div class="stat-tile"><div class="stat-value">${stats.moviePct}% / ${stats.tvPct}%</div><div class="stat-label">фильмы / сериалы</div></div>
+      </div>`;
+
+    function barsHtml(title, items) {
+      if (items.length === 0) return '';
+      return `<div class="stats-section-title">${title}</div><div class="stats-bars">` +
+        items.map(it => `
+          <div class="stats-bar-row">
+            <span class="stats-bar-label" title="${it.label}">${it.label}</span>
+            <span class="stats-bar-track"><span class="stats-bar-fill" style="width:${it.pct}%"></span></span>
+            <span class="stats-bar-pct">${it.pct}%</span>
+          </div>`).join('') + '</div>';
+    }
+
+    let factsHtml = '';
+    if (stats.best) factsHtml += `<div>⭐ Самый высокий рейтинг среди просмотренного: «${stats.best.title || ''}» (${(stats.best.vote_average || 0).toFixed(1)})</div>`;
+    if (stats.longest && stats.longest.runtimeMinutes) factsHtml += `<div>⏱ Самое длинное: «${stats.longest.title || ''}» — ${formatStatMinutes(stats.longest.runtimeMinutes)}</div>`;
+
+    container.innerHTML = tilesHtml +
+      barsHtml('Жанры, которые вы смотрите', stats.topGenres) +
+      barsHtml('Страны производства', stats.topCountries) +
+      (factsHtml ? '<div class="stats-section-title">Заметно</div><div class="stats-facts">' + factsHtml + '</div>' : '');
+  }
+
+  const statsPanel = document.getElementById('statsPanel');
+  const statsBodyDesktop = document.getElementById('statsBodyDesktop');
+  const layoutEl = document.querySelector('.layout');
+  const wrapEl = document.querySelector('.wrap');
+  const isDesktopStats = () => window.matchMedia('(min-width: 781px)').matches;
+
+  function openStatsDesktop() {
+    renderStatsInto(statsBodyDesktop);
+    statsPanel.classList.remove('hidden');
+    layoutEl.classList.add('with-stats');
+    wrapEl.classList.add('with-stats');
+  }
+  function closeStatsDesktop() {
+    statsPanel.classList.add('hidden');
+    layoutEl.classList.remove('with-stats');
+    wrapEl.classList.remove('with-stats');
+  }
+  function openStatsMobile() {
+    renderStatsInto(statsBody);
+    statsModal.classList.remove('hidden');
+  }
+  function closeStatsMobile() {
+    statsModal.classList.add('hidden');
+  }
+
+  document.getElementById('statsBtn').addEventListener('click', () => {
+    if (isDesktopStats()) {
+      if (statsPanel.classList.contains('hidden')) openStatsDesktop();
+      else closeStatsDesktop();
+    } else {
+      openStatsMobile();
+    }
+  });
+  document.getElementById('statsCloseBtn').addEventListener('click', closeStatsMobile);
+  statsModal.addEventListener('click', (e) => {
+    if (e.target === statsModal) closeStatsMobile();
+  });
+  document.getElementById('statsPanelCloseBtn').addEventListener('click', closeStatsDesktop);
+  window.addEventListener('resize', () => {
+    if (!isDesktopStats() && !statsPanel.classList.contains('hidden')) {
+      closeStatsDesktop();
+    }
+    if (isDesktopStats() && !statsModal.classList.contains('hidden')) {
+      closeStatsMobile();
+    }
+  });
+
   // --- Переключатель "Фильмы / Сериалы" ---
   document.querySelectorAll('.media-toggle-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -2106,6 +2477,7 @@
   spinBtn.addEventListener('click', spin);
   updateHistoryCount();
   updateFavoritesCount();
+  updateWatchedCount();
   renderGenrePills();
 </script>
 </body>
