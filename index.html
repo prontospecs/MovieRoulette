@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#000000">
-<title>Рулетка фильмов</title>
+<title>Рулетка фильмов и сериалов</title>
 <style>
   :root {
     --bg: #000000;
@@ -34,6 +34,17 @@
   }
   .wrap { width: 100%; max-width: 1040px; }
   header { text-align: center; margin-bottom: 30px; }
+  .media-toggle {
+    display: inline-flex; gap: 4px; padding: 4px;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 999px;
+    margin-bottom: 18px;
+  }
+  .media-toggle-btn {
+    padding: 8px 20px; border-radius: 999px; border: none; background: transparent;
+    color: var(--muted); font-size: 13px; font-weight: 600; cursor: pointer;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  }
+  .media-toggle-btn.active { background: var(--gold); color: #241a05; }
   h1 {
     font-size: 30px;
     margin: 0 0 6px;
@@ -484,8 +495,12 @@
 
 <div class="wrap">
   <header>
-    <h1>Рулетка <span>фильмов</span></h1>
-    <p class="subtitle">Выберите жанры и крутите — фильм выбирается случайно из базы TMDb (сотни тысяч фильмов)</p>
+    <div class="media-toggle" id="mediaToggle">
+      <button class="media-toggle-btn active" data-type="movie" type="button">Фильмы</button>
+      <button class="media-toggle-btn" data-type="tv" type="button">Сериалы</button>
+    </div>
+    <h1>Рулетка <span>фильмов и сериалов</span></h1>
+    <p class="subtitle" id="subtitleText">Выберите жанры и крутите — фильм выбирается случайно из базы TMDb (сотни тысяч фильмов)</p>
   </header>
 
   <div class="layout">
@@ -504,7 +519,7 @@
         <div class="genre-pills" id="countryPills"></div>
       </div>
 
-      <div class="filter-block">
+      <div class="filter-block" id="actorFilterBlock">
         <h2>Актёр</h2>
         <div class="actor-search-wrap">
           <input type="text" id="actorInput" class="select-field" placeholder="Введите имя актёра…" autocomplete="off">
@@ -582,6 +597,11 @@
   const API_BASE = 'https://api.themoviedb.org/3';
   const IMG_BASE = 'https://image.tmdb.org/t/p/';
 
+  // У TMDb нет отдельного жанра "Аниме" — японская анимация помечена тем же
+  // жанром "Мультфильм" (id 16), что и обычные западные мультфильмы. Плитка
+  // "Аниме" в интерфейсе — это скрытый запрос "Мультфильм" + страна Япония.
+  const ANIMATION_GENRE_ID = 16;
+
   // Реальный шаг между тайлами ленты меряется из DOM в measureTileStep() —
   // это надёжнее жёстко зашитого числа, которое легко рассинхронизировать с CSS
   // (например, при адаптации под маленькие экраны).
@@ -634,6 +654,9 @@
     { code: 'NG', name: 'Нигерия' }
   ];
   const MAX_COUNTRIES = 5;
+
+  let mediaType = 'movie'; // 'movie' | 'tv'
+  const ANIME_PSEUDO_ID = -1; // синтетический "жанр" — реального такого id у TMDb нет
 
   let genreMap = {};      // id -> название
   let selectedGenres = new Set();
@@ -770,7 +793,9 @@
 
   async function loadGenres() {
     try {
-      const data = await apiGet('/genre/movie/list', {});
+      genreMap = {};
+      selectedGenres.clear();
+      const data = await apiGet('/genre/' + mediaType + '/list', {});
       (data.genres || []).forEach(g => { genreMap[g.id] = g.name; });
       renderGenrePills();
     } catch (e) {
@@ -779,24 +804,31 @@
     }
   }
 
+  function addPill(id, label, extraClass) {
+    const pill = document.createElement('div');
+    pill.className = 'pill' + (extraClass ? ' ' + extraClass : '');
+    pill.textContent = label;
+    pill.dataset.id = id;
+    pill.addEventListener('click', () => {
+      if (selectedGenres.has(id)) { selectedGenres.delete(id); pill.classList.remove('active'); }
+      else { selectedGenres.add(id); pill.classList.add('active'); }
+    });
+    genrePillsEl.appendChild(pill);
+  }
+
   function renderGenrePills() {
     genrePillsEl.innerHTML = '';
     Object.entries(genreMap).forEach(([id, name]) => {
-      id = Number(id);
-      const pill = document.createElement('div');
-      pill.className = 'pill';
-      pill.textContent = cap(name);
-      pill.dataset.id = id;
-      pill.addEventListener('click', () => {
-        if (selectedGenres.has(id)) { selectedGenres.delete(id); pill.classList.remove('active'); }
-        else { selectedGenres.add(id); pill.classList.add('active'); }
-      });
-      genrePillsEl.appendChild(pill);
+      addPill(Number(id), cap(name));
     });
+    // Аниме — не настоящий жанр TMDb, а "Мультфильм" + страна Япония.
+    // Держим отдельным пунктом, чтобы не путать с обычными мультфильмами.
+    addPill(ANIME_PSEUDO_ID, 'Аниме');
   }
 
   document.getElementById('selectAllBtn').addEventListener('click', () => {
     selectedGenres = new Set(Object.keys(genreMap).map(Number));
+    selectedGenres.add(ANIME_PSEUDO_ID);
     genrePillsEl.querySelectorAll('.pill').forEach(p => p.classList.add('active'));
   });
   document.getElementById('selectNoneBtn').addEventListener('click', () => {
@@ -894,11 +926,25 @@
     }
   });
 
+  // Приводит фильм и сериал к единой форме: у сериала поля называются иначе
+  // (name вместо title, first_air_date вместо release_date), а остальной код
+  // приложения (карточка результата, история, избранное, трейлер) написан в
+  // терминах "фильма" — чтобы не переписывать всё, просто нормализуем один раз.
+  function normalizeMediaItem(m) {
+    return Object.assign({}, m, {
+      title: m.title || m.name || '',
+      release_date: m.release_date || m.first_air_date || '',
+      media_type: mediaType
+    });
+  }
+
   function getFilters() {
     const yearFrom = document.getElementById('yearFrom').value.trim();
     const yearTo = document.getElementById('yearTo').value.trim();
+    const allGenres = Array.from(selectedGenres);
     return {
-      genreIds: Array.from(selectedGenres),
+      genreIds: allGenres.filter(id => id !== ANIME_PSEUDO_ID),
+      wantsAnime: allGenres.includes(ANIME_PSEUDO_ID),
       countries: Array.from(selectedCountries),
       actorId: selectedActor ? selectedActor.id : null,
       yearFrom: yearFrom,
@@ -906,19 +952,55 @@
     };
   }
 
-  async function fetchDiscoverPage(filters, page) {
+  // "Спек" — набор параметров одного под-запроса. Обычно один (выбранные
+  // жанры + страны), но если включено "Аниме" — добавляется второй спек
+  // (Мультфильм + Япония), и результаты обоих объединяются через ИЛИ, чтобы
+  // выбор "Аниме" не сужал прочие выбранные жанры до одной Японии.
+  function buildQuerySpecs(filters) {
+    const specs = [];
+    if (filters.genreIds.length > 0) {
+      specs.push({ genreIds: filters.genreIds, countries: filters.countries, isAnimeSpec: false });
+    }
+    if (filters.wantsAnime) {
+      specs.push({ genreIds: [ANIMATION_GENRE_ID], countries: ['JP'], isAnimeSpec: true });
+    }
+    return specs;
+  }
+
+  // У discover/tv нет параметра with_cast (он есть только у discover/movie),
+  // поэтому для сериалов + актёра берём полную фильмографию актёра через
+  // /person/{id}/tv_credits и фильтруем жанр/страну/год уже на своей стороне.
+  async function fetchTvCreditsAsPage(spec, filters) {
+    const data = await apiGet('/person/' + filters.actorId + '/tv_credits', {});
+    let results = (data.cast || []).map(normalizeMediaItem);
+    results = results.filter(m => (m.genre_ids || []).some(g => spec.genreIds.includes(g)));
+    if (spec.countries && spec.countries.length > 0) {
+      results = results.filter(m => (m.origin_country || []).some(c => spec.countries.includes(c)));
+    }
+    if (filters.yearFrom) results = results.filter(m => m.release_date && m.release_date.slice(0, 4) >= filters.yearFrom);
+    if (filters.yearTo) results = results.filter(m => m.release_date && m.release_date.slice(0, 4) <= filters.yearTo);
+    return { results, total_pages: 1, total_results: results.length };
+  }
+
+  async function fetchDiscoverPage(spec, filters, page) {
+    if (mediaType === 'tv' && filters.actorId) {
+      return fetchTvCreditsAsPage(spec, filters);
+    }
     const params = {
       sort_by: 'popularity.desc',
       include_adult: 'false',
       'vote_count.gte': '150',
-      with_genres: filters.genreIds.join('|'),
+      with_genres: spec.genreIds.join('|'),
       page: String(page)
     };
-    if (filters.countries && filters.countries.length > 0) params.with_origin_country = filters.countries.join('|');
+    if (spec.countries && spec.countries.length > 0) params.with_origin_country = spec.countries.join('|');
     if (filters.actorId) params.with_cast = String(filters.actorId);
-    if (filters.yearFrom) params['primary_release_date.gte'] = filters.yearFrom + '-01-01';
-    if (filters.yearTo) params['primary_release_date.lte'] = filters.yearTo + '-12-31';
-    return apiGet('/discover/movie', params);
+    const dateField = mediaType === 'tv' ? 'first_air_date' : 'primary_release_date';
+    if (filters.yearFrom) params[dateField + '.gte'] = filters.yearFrom + '-01-01';
+    if (filters.yearTo) params[dateField + '.lte'] = filters.yearTo + '-12-31';
+    const data = await apiGet('/discover/' + mediaType, params);
+    data.results = (data.results || []).map(normalizeMediaItem);
+    return data;
   }
 
   function goodCandidate(m) {
@@ -928,17 +1010,28 @@
     return !seenIds.has(m.id);
   }
 
-  // Пытается найти случайный ещё не показанный фильм. Страница №1 используется
-  // ТОЛЬКО чтобы узнать total_pages — сам выбор всегда идёт по-настоящему случайной
-  // странице (иначе рулетка постоянно скатывается к горстке самых популярных
-  // новинок, которые всегда занимают первые места в выдаче TMDb).
+  // Пытается найти случайный ещё не показанный фильм/сериал. Страница №1 у
+  // каждого спека используется ТОЛЬКО чтобы узнать total_pages — сам выбор
+  // всегда идёт по-настоящему случайной странице (иначе рулетка постоянно
+  // скатывается к горстке самых популярных новинок, которые всегда занимают
+  // первые места в выдаче TMDb).
   async function pickRandomMovie(filters) {
-    const first = await fetchDiscoverPage(filters, 1);
-    if (!first.total_results) return { error: 'empty' };
+    const specs = buildQuerySpecs(filters);
+    if (specs.length === 0) return { error: 'empty' };
 
-    const maxPage = Math.max(1, Math.min(first.total_pages || 1, 500));
+    const firsts = await Promise.all(specs.map(spec => fetchDiscoverPage(spec, filters, 1)));
+    const specStates = specs
+      .map((spec, i) => ({
+        spec,
+        first: firsts[i],
+        maxPage: Math.max(1, Math.min(firsts[i].total_pages || 1, 500)),
+        triedPages: new Set()
+      }))
+      .filter(s => !!s.first.total_results);
+
+    if (specStates.length === 0) return { error: 'empty' };
+
     const maxAttempts = 8;
-    const triedPages = new Set();
 
     // Копим постеры со всех просмотренных за это вращение страниц — пригодятся
     // как декоративный "фарш" для ленты рулетки, чтобы там было больше разных
@@ -949,19 +1042,20 @@
         if (m.poster_path && !visualPoolMap.has(m.id)) visualPoolMap.set(m.id, m);
       });
     }
-    collectVisual(first.results);
+    specStates.forEach(s => collectVisual(s.first.results));
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      let page = Math.floor(Math.random() * maxPage) + 1;
+      const state = specStates[Math.floor(Math.random() * specStates.length)];
+      let page = Math.floor(Math.random() * state.maxPage) + 1;
       // стараемся не дёргать одну и ту же страницу дважды подряд за один спин
       let guard = 0;
-      while (triedPages.has(page) && guard < 5 && triedPages.size < maxPage) {
-        page = Math.floor(Math.random() * maxPage) + 1;
+      while (state.triedPages.has(page) && guard < 5 && state.triedPages.size < state.maxPage) {
+        page = Math.floor(Math.random() * state.maxPage) + 1;
         guard++;
       }
-      triedPages.add(page);
+      state.triedPages.add(page);
 
-      const data = (page === 1) ? first : await fetchDiscoverPage(filters, page);
+      const data = (page === 1) ? state.first : await fetchDiscoverPage(state.spec, filters, page);
       collectVisual(data.results);
 
       const fresh = (data.results || []).filter(goodCandidate).filter(notSeen);
@@ -1081,7 +1175,8 @@
       ? movie.vote_count.toLocaleString('ru-RU') + ' оценок'
       : '';
     document.getElementById('resOverview').textContent = movie.overview || 'Описание отсутствует.';
-    document.getElementById('resLink').href = 'https://www.themoviedb.org/movie/' + movie.id + '?language=ru';
+    const tmdbType = movie.media_type === 'tv' ? 'tv' : 'movie';
+    document.getElementById('resLink').href = 'https://www.themoviedb.org/' + tmdbType + '/' + movie.id + '?language=ru';
     document.getElementById('resKinopoiskLink').href = buildKinopoiskUrl(movie);
 
     const genresEl = document.getElementById('resGenres');
@@ -1095,7 +1190,7 @@
   async function spin() {
     if (spinning) return;
     const filters = getFilters();
-    if (filters.genreIds.length === 0) {
+    if (filters.genreIds.length === 0 && !filters.wantsAnime) {
       showError('Выберите хотя бы один жанр!');
       return;
     }
@@ -1201,9 +1296,10 @@
   const trailerBody = document.getElementById('trailerBody');
   const trailerBtn = document.getElementById('trailerBtn');
 
-  async function fetchTrailerKey(movieId) {
+  async function fetchTrailerKey(movieId, itemType) {
+    const trailerEndpointType = itemType === 'tv' ? 'tv' : 'movie';
     async function tryLang(lang) {
-      const data = await apiGet('/movie/' + movieId + '/videos', lang ? { language: lang } : {});
+      const data = await apiGet('/' + trailerEndpointType + '/' + movieId + '/videos', lang ? { language: lang } : {});
       const vids = (data && data.results) || [];
       const youtube = vids.filter(v => v.site === 'YouTube');
       if (!youtube.length) return null;
@@ -1246,7 +1342,7 @@
     }, 110);
 
     try {
-      const key = await fetchTrailerKey(currentResultMovie.id);
+      const key = await fetchTrailerKey(currentResultMovie.id, currentResultMovie.media_type);
       clearInterval(progressTimer);
       trailerBtn.textContent = 'Загрузка… 100%';
       if (!trailerModal.classList.contains('hidden')) {
@@ -1327,6 +1423,30 @@
     updateFavoritesCount();
     if (currentResultMovie) updateWatchHeart(currentResultMovie);
     renderFavoritesModal();
+  });
+
+  // --- Переключатель "Фильмы / Сериалы" ---
+  document.querySelectorAll('.media-toggle-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const type = btn.dataset.type;
+      if (type === mediaType || spinning) return;
+      mediaType = type;
+
+      document.querySelectorAll('.media-toggle-btn').forEach(b => b.classList.toggle('active', b === btn));
+
+      document.getElementById('subtitleText').textContent = mediaType === 'tv'
+        ? 'Выберите жанры и крутите — сериал выбирается случайно из базы TMDb'
+        : 'Выберите жанры и крутите — фильм выбирается случайно из базы TMDb (сотни тысяч фильмов)';
+
+      hideError();
+      resultCard.classList.remove('show');
+      currentResultMovie = null;
+      reelTrack.innerHTML = '';
+      reelPlaceholder.classList.remove('hidden');
+      spinBtn.textContent = 'Крутить рулетку';
+
+      loadGenres();
+    });
   });
 
   spinBtn.addEventListener('click', spin);
