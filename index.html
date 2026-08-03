@@ -89,6 +89,8 @@
     transition: all .15s ease;
   }
   .pill:hover { border-color: var(--gold); color: var(--text); }
+  .pill-disabled { opacity: .35; cursor: not-allowed; }
+  .pill-disabled:hover { border-color: var(--border); color: var(--muted); }
   .pill.active {
     background: linear-gradient(135deg, var(--gold), var(--gold-2));
     border-color: transparent;
@@ -597,9 +599,10 @@
   const API_BASE = 'https://api.themoviedb.org/3';
   const IMG_BASE = 'https://image.tmdb.org/t/p/';
 
-  // У TMDb нет отдельного жанра "Аниме" — японская анимация помечена тем же
-  // жанром "Мультфильм" (id 16), что и обычные западные мультфильмы. Плитка
-  // "Аниме" в интерфейсе — это скрытый запрос "Мультфильм" + страна Япония.
+  // У TMDb нет отдельного жанра "Аниме" — японская и корейская анимация
+  // помечены тем же жанром "Мультфильм" (id 16), что и обычные западные
+  // мультфильмы. Плитка "Аниме" в интерфейсе — это скрытый запрос
+  // "Мультфильм" + страна Япония ИЛИ Южная Корея.
   const ANIMATION_GENRE_ID = 16;
 
   // Реальный шаг между тайлами ленты меряется из DOM в measureTileStep() —
@@ -656,9 +659,56 @@
   const MAX_COUNTRIES = 5;
 
   let mediaType = 'movie'; // 'movie' | 'tv'
-  const ANIME_PSEUDO_ID = -1; // синтетический "жанр" — реального такого id у TMDb нет
+  const ANIME_KEY = 'anime'; // синтетический "жанр" — реального такого id у TMDb нет
 
-  let genreMap = {};      // id -> название
+  // У TMDb разные списки жанров для фильмов и сериалов (где-то они склеены
+  // по-другому, где-то есть только в одном списке). Чтобы в интерфейсе были
+  // одинаковые плитки в обоих режимах, держим один общий список с ключом,
+  // а к нему — соответствующие настоящие id жанров для фильмов и сериалов.
+  // Если для текущего режима соответствия нет (movie/tv: null) — плитка
+  // показывается, но недоступна для выбора в этом режиме.
+  const GENRE_DEFS = [
+    { key: 'action_adventure', label: 'Боевик и приключения', movie: [28, 12], tv: [10759] },
+    { key: 'animation',        label: 'Мультфильм',            movie: [16],     tv: [16] },
+    { key: 'comedy',           label: 'Комедия',                movie: [35],     tv: [35] },
+    { key: 'crime',            label: 'Криминал',               movie: [80],     tv: [80] },
+    { key: 'documentary',      label: 'Документальный',         movie: [99],     tv: [99] },
+    { key: 'drama',            label: 'Драма',                  movie: [18],     tv: [18] },
+    { key: 'family',           label: 'Семейный',               movie: [10751],  tv: [10751] },
+    { key: 'scifi_fantasy',    label: 'Фантастика и фэнтези',   movie: [878, 14], tv: [10765] },
+    { key: 'mystery',          label: 'Детектив',                movie: [9648],   tv: [9648] },
+    { key: 'western',          label: 'Вестерн',                 movie: [37],     tv: [37] },
+    { key: 'war',              label: 'Военный',                 movie: [10752],  tv: [10768] },
+    { key: 'history',          label: 'История',                 movie: [36],     tv: null },
+    { key: 'horror',           label: 'Ужасы',                   movie: [27],     tv: null },
+    { key: 'music',            label: 'Музыка',                  movie: [10402],  tv: null },
+    { key: 'romance',          label: 'Мелодрама',                movie: [10749],  tv: null },
+    { key: 'tv_movie',         label: 'Телевизионный фильм',     movie: [10770],  tv: null },
+    { key: 'kids',             label: 'Детский',                  movie: null,     tv: [10762] },
+    { key: 'news',             label: 'Новости',                  movie: null,     tv: [10763] },
+    { key: 'reality',          label: 'Реалити-шоу',              movie: null,     tv: [10764] },
+    { key: 'soap',             label: 'Мыльная опера',            movie: null,     tv: [10766] },
+    { key: 'talk',             label: 'Ток-шоу',                   movie: null,     tv: [10767] }
+  ];
+
+  // Обратная карта: настоящий числовой id TMDb -> подпись, нужна только чтобы
+  // показать теги жанров под описанием фильма/сериала в карточке результата.
+  const GENRE_ID_LABELS = {};
+  GENRE_DEFS.forEach(def => {
+    (def.movie || []).forEach(id => { GENRE_ID_LABELS[id] = def.label; });
+    (def.tv || []).forEach(id => { GENRE_ID_LABELS[id] = def.label; });
+  });
+
+  function resolveGenreIds(keys) {
+    const ids = [];
+    keys.forEach(key => {
+      const def = GENRE_DEFS.find(d => d.key === key);
+      const list = def && (mediaType === 'tv' ? def.tv : def.movie);
+      if (list) ids.push(...list);
+    });
+    return ids;
+  }
+
   let selectedGenres = new Set();
   let selectedCountries = new Set(); // пусто = любая страна
   let selectedActor = null;          // { id, name }
@@ -791,49 +841,45 @@
     return res.json();
   }
 
-  async function loadGenres() {
-    try {
-      genreMap = {};
-      selectedGenres.clear();
-      const data = await apiGet('/genre/' + mediaType + '/list', {});
-      (data.genres || []).forEach(g => { genreMap[g.id] = g.name; });
-      renderGenrePills();
-    } catch (e) {
-      genrePillsEl.innerHTML = '';
-      showError('Не удалось загрузить список жанров: ' + e.message);
-    }
-  }
-
-  function addPill(id, label, extraClass) {
+  function addPill(key, label, available) {
     const pill = document.createElement('div');
-    pill.className = 'pill' + (extraClass ? ' ' + extraClass : '');
+    pill.className = 'pill' + (available ? '' : ' pill-disabled');
     pill.textContent = label;
-    pill.dataset.id = id;
-    pill.addEventListener('click', () => {
-      if (selectedGenres.has(id)) { selectedGenres.delete(id); pill.classList.remove('active'); }
-      else { selectedGenres.add(id); pill.classList.add('active'); }
-    });
+    pill.dataset.key = key;
+    if (available) {
+      if (selectedGenres.has(key)) pill.classList.add('active');
+      pill.addEventListener('click', () => {
+        if (selectedGenres.has(key)) { selectedGenres.delete(key); pill.classList.remove('active'); }
+        else { selectedGenres.add(key); pill.classList.add('active'); }
+      });
+    } else {
+      pill.title = mediaType === 'tv' ? 'Недоступно для сериалов' : 'Недоступно для фильмов';
+    }
     genrePillsEl.appendChild(pill);
   }
 
+  // Плитки жанров одинаковые в режимах "Фильмы" и "Сериалы" — те, для которых
+  // у TMDb нет соответствия в текущем режиме, просто показываются неактивными,
+  // а выбор при этом не сбрасывается, если переключиться обратно.
   function renderGenrePills() {
     genrePillsEl.innerHTML = '';
-    Object.entries(genreMap).forEach(([id, name]) => {
-      addPill(Number(id), cap(name));
+    GENRE_DEFS.forEach(def => {
+      const available = !!(mediaType === 'tv' ? def.tv : def.movie);
+      addPill(def.key, def.label, available);
     });
-    // Аниме — не настоящий жанр TMDb, а "Мультфильм" + страна Япония.
+    // Аниме — не настоящий жанр TMDb, а "Мультфильм" + Япония/Южная Корея.
     // Держим отдельным пунктом, чтобы не путать с обычными мультфильмами.
-    addPill(ANIME_PSEUDO_ID, 'Аниме');
+    addPill(ANIME_KEY, 'Аниме', true);
   }
 
   document.getElementById('selectAllBtn').addEventListener('click', () => {
-    selectedGenres = new Set(Object.keys(genreMap).map(Number));
-    selectedGenres.add(ANIME_PSEUDO_ID);
-    genrePillsEl.querySelectorAll('.pill').forEach(p => p.classList.add('active'));
+    selectedGenres = new Set(GENRE_DEFS.map(def => def.key));
+    selectedGenres.add(ANIME_KEY);
+    renderGenrePills();
   });
   document.getElementById('selectNoneBtn').addEventListener('click', () => {
     selectedGenres.clear();
-    genrePillsEl.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+    renderGenrePills();
   });
 
   // --- Страна производства (мультивыбор, максимум MAX_COUNTRIES штук) ---
@@ -941,10 +987,10 @@
   function getFilters() {
     const yearFrom = document.getElementById('yearFrom').value.trim();
     const yearTo = document.getElementById('yearTo').value.trim();
-    const allGenres = Array.from(selectedGenres);
+    const allKeys = Array.from(selectedGenres);
     return {
-      genreIds: allGenres.filter(id => id !== ANIME_PSEUDO_ID),
-      wantsAnime: allGenres.includes(ANIME_PSEUDO_ID),
+      genreIds: resolveGenreIds(allKeys.filter(key => key !== ANIME_KEY)),
+      wantsAnime: allKeys.includes(ANIME_KEY),
       countries: Array.from(selectedCountries),
       actorId: selectedActor ? selectedActor.id : null,
       yearFrom: yearFrom,
@@ -962,7 +1008,7 @@
       specs.push({ genreIds: filters.genreIds, countries: filters.countries, isAnimeSpec: false });
     }
     if (filters.wantsAnime) {
-      specs.push({ genreIds: [ANIMATION_GENRE_ID], countries: ['JP'], isAnimeSpec: true });
+      specs.push({ genreIds: [ANIMATION_GENRE_ID], countries: ['JP', 'KR'], isAnimeSpec: true });
     }
     return specs;
   }
@@ -1181,7 +1227,7 @@
 
     const genresEl = document.getElementById('resGenres');
     genresEl.innerHTML = (movie.genre_ids || [])
-      .map(id => genreMap[id] ? `<span class="genre-tag">${cap(genreMap[id])}</span>` : '')
+      .map(id => GENRE_ID_LABELS[id] ? `<span class="genre-tag">${GENRE_ID_LABELS[id]}</span>` : '')
       .join('');
 
     resultCard.classList.add('show');
@@ -1445,14 +1491,14 @@
       reelPlaceholder.classList.remove('hidden');
       spinBtn.textContent = 'Крутить рулетку';
 
-      loadGenres();
+      renderGenrePills();
     });
   });
 
   spinBtn.addEventListener('click', spin);
   updateHistoryCount();
   updateFavoritesCount();
-  loadGenres();
+  renderGenrePills();
 </script>
 </body>
 </html>
