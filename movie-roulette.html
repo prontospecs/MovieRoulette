@@ -1,0 +1,1322 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Рулетка фильмов</title>
+<style>
+  :root {
+    --bg: #000000;
+    --panel: #000000;
+    --panel-2: #0c0c0c;
+    --border: rgba(255,255,255,0.08);
+    --text: #f2f3f7;
+    --muted: #8b91a3;
+    --gold: #e6b84f;
+    --gold-2: #f6d98a;
+    --danger: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background:
+      radial-gradient(circle at 50% -10%, #0a0a0a 0%, var(--bg) 55%);
+    color: var(--text);
+    font-family: 'Segoe UI', Arial, sans-serif;
+    display: flex;
+    justify-content: center;
+    padding: 32px 16px 64px;
+  }
+  .wrap { width: 100%; max-width: 1040px; }
+  header { text-align: center; margin-bottom: 30px; }
+  h1 {
+    font-size: 30px;
+    margin: 0 0 6px;
+    letter-spacing: 0.5px;
+    font-weight: 800;
+  }
+  h1 span { color: var(--gold); }
+  .subtitle { color: var(--muted); font-size: 14px; }
+
+  .layout { display: grid; grid-template-columns: 280px 1fr; gap: 24px; }
+  @media (max-width: 780px) {
+    .layout { grid-template-columns: 1fr; gap: 18px; }
+    /* На телефоне сразу показываем рулетку и кнопку, фильтры — ниже, чтобы не листать */
+    .stage { order: -1; }
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 20px;
+  }
+  .panel h2 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--muted);
+    margin: 0 0 14px;
+    font-weight: 700;
+  }
+
+  .genre-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+  .pill {
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+    transition: all .15s ease;
+  }
+  .pill:hover { border-color: var(--gold); color: var(--text); }
+  .pill.active {
+    background: linear-gradient(135deg, var(--gold), var(--gold-2));
+    border-color: transparent;
+    color: #241a05;
+    font-weight: 700;
+  }
+
+  .quick-actions { display: flex; gap: 8px; margin-top: 16px; }
+  .quick-actions button {
+    flex: 1;
+    padding: 9px 6px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .quick-actions button:hover { color: var(--text); border-color: var(--gold); }
+
+  .filter-block { margin-top: 20px; }
+  .select-field, .year-range input {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 13px;
+    font-family: inherit;
+  }
+  .select-field:focus, .year-range input:focus { outline: none; border-color: var(--gold); }
+  .year-range { display: flex; align-items: center; gap: 8px; }
+  .year-range input { width: 100%; text-align: center; }
+  .year-range span { color: var(--muted); font-size: 13px; }
+  .filter-hint { color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0; font-size: 11px; }
+
+  .actor-search-wrap { position: relative; }
+  .actor-results {
+    position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+    max-height: 220px; overflow-y: auto; z-index: 20;
+    box-shadow: 0 10px 24px rgba(0,0,0,.4);
+  }
+  .actor-result-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; font-size: 13px; }
+  .actor-result-item:hover { background: rgba(255,255,255,0.06); }
+  .actor-result-item img { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; background: #0c0c0c; flex-shrink: 0; }
+  .actor-chip {
+    margin-top: 10px; display: flex; align-items: center; gap: 8px;
+    background: var(--panel-2); border: 1px solid var(--gold); border-radius: 999px;
+    padding: 6px 10px 6px 6px; width: fit-content;
+  }
+  .actor-chip img { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; background: #0c0c0c; }
+  .actor-chip span { font-size: 13px; }
+  .actor-chip button { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 16px; line-height: 1; padding: 0 2px; }
+  .actor-chip button:hover { color: var(--danger); }
+
+  .top-actions {
+    position: fixed;
+    /* Простые значения первыми — рабочий запасной вариант для WebView/старых
+       движков, которые не понимают env(). Если env() поддерживается, вторая
+       пара top/right просто переопределяет первую. */
+    top: 22px;
+    right: 22px;
+    top: calc(22px + env(safe-area-inset-top, 0px));
+    right: calc(22px + env(safe-area-inset-right, 0px));
+    z-index: 500;
+    display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px;
+    max-width: calc(100vw - 24px);
+    max-width: calc(100vw - 24px - env(safe-area-inset-right, 0px));
+  }
+  .history-btn, .favorites-btn {
+    padding: 9px 18px; border-radius: 999px;
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    font-size: 12px; font-weight: 600; cursor: pointer;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  }
+  .history-btn:hover { border-color: var(--gold); color: var(--gold-2); }
+  .favorites-btn:hover { border-color: var(--danger); color: #ff9a9a; }
+
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.75);
+    display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px;
+  }
+  .modal-box {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 18px;
+    width: 100%; max-width: 800px; max-height: 82vh; display: flex; flex-direction: column; overflow: hidden;
+  }
+  .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; border-bottom: 1px solid var(--border); }
+  .modal-header h2 { font-size: 16px; margin: 0; }
+  .modal-header button { background: none; border: none; color: var(--muted); font-size: 22px; cursor: pointer; line-height: 1; }
+  .modal-header button:hover { color: var(--text); }
+  .modal-body { padding: 18px 22px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 14px; }
+  .modal-body .empty-hint { color: var(--muted); font-size: 13px; grid-column: 1 / -1; text-align: center; padding: 30px 0; }
+  .history-item { text-align: center; cursor: pointer; position: relative; }
+  .history-item .h-poster-wrap { position: relative; }
+  .history-item img { width: 100%; aspect-ratio: 2/3; object-fit: cover; border-radius: 10px; background: #0c0c0c; margin-bottom: 6px; box-shadow: 0 6px 14px rgba(0,0,0,.4); transition: transform .15s ease; }
+  .history-item:hover img { transform: scale(1.04); }
+  .history-item .h-title { font-size: 12px; font-weight: 600; line-height: 1.3; }
+  .history-item .h-meta { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 2px; }
+  .history-item .h-year { font-size: 11px; color: var(--muted); }
+  .history-item .h-rating { font-size: 11px; color: var(--gold-2); font-weight: 700; }
+  .h-remove {
+    position: absolute; top: 5px; right: 5px; z-index: 2;
+    width: 24px; height: 24px; border-radius: 50%;
+    background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.15);
+    color: #fff; font-size: 14px; line-height: 1; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  }
+  .h-remove:hover { background: var(--danger); border-color: var(--danger); }
+  .modal-footer { padding: 14px 22px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; }
+  .modal-footer button {
+    padding: 8px 16px; border-radius: 10px; border: 1px solid rgba(255,107,107,.4);
+    background: rgba(255,107,107,.08); color: var(--danger); font-size: 12px; cursor: pointer;
+  }
+  .modal-footer button:hover { background: rgba(255,107,107,.16); }
+
+  .attribution { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); line-height: 1.5; }
+  .attribution a { color: var(--muted); }
+
+  .stage { display: flex; flex-direction: column; align-items: center; }
+
+  .reel-viewport {
+    position: relative;
+    width: 100%;
+    max-width: 620px;
+    height: 214px;
+    overflow: hidden;
+    border-radius: 16px;
+    background: #000000;
+    border: 1px solid var(--border);
+    margin-bottom: 22px;
+  }
+  .reel-track { position: absolute; top: 12px; left: 0; display: flex; height: 190px; }
+  .reel-tile {
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    width: 130px;
+    height: 190px;
+    margin: 0 8px;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #0c0c0c;
+    box-shadow: 0 6px 16px rgba(0,0,0,.45);
+    transition: box-shadow .3s ease, transform .3s ease;
+  }
+  .reel-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .reel-tile.winner { box-shadow: 0 0 0 3px var(--gold), 0 10px 26px rgba(230,184,79,.35); transform: scale(1.02); }
+
+  .reel-frame {
+    position: absolute;
+    top: 6px; left: 50%;
+    transform: translateX(-50%);
+    width: 146px; height: 202px;
+    border: 2px solid var(--gold);
+    border-radius: 12px;
+    pointer-events: none;
+    box-shadow: 0 0 22px rgba(230,184,79,.25) inset;
+  }
+  .reel-fade { position: absolute; top: 0; bottom: 0; width: 70px; pointer-events: none; z-index: 2; }
+  .reel-fade.left { left: 0; background: linear-gradient(to right, #000000, transparent); }
+  .reel-fade.right { right: 0; background: linear-gradient(to left, #000000, transparent); }
+
+  .placeholder {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--muted); font-size: 13px; text-align: center; padding: 0 30px;
+  }
+
+  .spin-btn {
+    padding: 14px 40px;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    border: none;
+    border-radius: 14px;
+    background: linear-gradient(135deg, var(--gold), #d99a2b);
+    color: #241a05;
+    cursor: pointer;
+    box-shadow: 0 10px 24px rgba(230,184,79,.28);
+    transition: transform .15s ease, box-shadow .15s ease, opacity .15s ease;
+  }
+  .spin-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 14px 30px rgba(230,184,79,.4); }
+  .spin-btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+
+  .error-box {
+    margin-top: 14px;
+    padding: 10px 16px;
+    border-radius: 10px;
+    background: rgba(255,107,107,0.1);
+    border: 1px solid rgba(255,107,107,0.35);
+    color: var(--danger);
+    font-size: 13px;
+    text-align: center;
+  }
+  .hidden { display: none !important; }
+
+  .result-card {
+    margin-top: 28px;
+    width: 100%;
+    max-width: 720px;
+    position: relative;
+    border-radius: 20px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    opacity: 0;
+    transform: translateY(12px);
+    transition: opacity .5s ease, transform .5s ease;
+  }
+  .result-card.show { opacity: 1; transform: translateY(0); }
+  .result-backdrop {
+    position: absolute; inset: 0;
+    background-size: cover; background-position: center;
+    filter: blur(18px) brightness(0.4) saturate(1.2);
+    transform: scale(1.15);
+    z-index: 0;
+  }
+  .watch-heart {
+    position: absolute; top: 14px; right: 14px; z-index: 3;
+    width: 40px; height: 40px; border-radius: 50%;
+    background: rgba(0,0,0,.55); border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; transition: transform .15s ease, background .15s ease, border-color .15s ease;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  }
+  .watch-heart svg { width: 19px; height: 19px; fill: none; stroke: var(--muted); stroke-width: 1.8; transition: fill .15s ease, stroke .15s ease; }
+  .watch-heart:hover { border-color: var(--danger); transform: scale(1.06); }
+  .watch-heart.active { background: rgba(255,107,107,.16); border-color: var(--danger); }
+  .watch-heart.active svg { fill: var(--danger); stroke: var(--danger); }
+  .result-inner {
+    position: relative; z-index: 1;
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    gap: 22px;
+    padding: 22px;
+    background: rgba(0, 0, 0, 0.72);
+  }
+  @media (max-width: 520px) {
+    .result-inner { grid-template-columns: 1fr; }
+    .result-poster { max-width: 190px; margin: 0 auto; }
+    .result-title, .result-meta, .result-genres, .result-overview, .result-link { text-align: center; }
+    .result-meta, .result-genres { justify-content: center; }
+    .result-link { align-self: center; }
+    .result-actions { justify-content: center; }
+  }
+  .result-poster { width: 100%; border-radius: 12px; box-shadow: 0 12px 30px rgba(0,0,0,.5); display: block; background: #0c0c0c; }
+  .result-body { display: flex; flex-direction: column; }
+  .result-title { font-size: 22px; font-weight: 800; margin: 0 0 8px; line-height: 1.25; }
+  .result-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; font-size: 13px; color: var(--muted); }
+  .rating {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: rgba(230,184,79,.12);
+    border: 1px solid rgba(230,184,79,.35);
+    color: var(--gold-2);
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 13px;
+  }
+  .rating svg { width: 13px; height: 13px; fill: var(--gold-2); }
+  .result-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; }
+  .trailer-btn {
+    padding: 9px 18px; border-radius: 999px; border: none; cursor: pointer;
+    background: linear-gradient(135deg, var(--gold), #d99a2b); color: #241a05;
+    font-size: 13px; font-weight: 700; letter-spacing: .2px;
+    box-shadow: 0 8px 18px rgba(230,184,79,.25);
+    transition: transform .15s ease, box-shadow .15s ease, opacity .15s ease;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  }
+  .trailer-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 12px 24px rgba(230,184,79,.35); }
+  .trailer-btn:disabled { opacity: .55; cursor: not-allowed; }
+  .trailer-box { max-width: 900px; }
+  .trailer-body { background: #000; }
+  .trailer-video-wrap {
+    position: relative; width: 100%; padding-top: 56.25%; /* 16:9 */
+    background: #000;
+  }
+  .trailer-video-wrap iframe {
+    position: absolute; inset: 0; width: 100%; height: 100%; border: 0;
+  }
+  .trailer-video-wrap .trailer-msg {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: var(--muted); font-size: 13px; text-align: center; padding: 0 24px;
+  }
+  .trailer-quality-hint {
+    text-align: center; padding: 10px 16px 0;
+    font-size: 11.5px; color: var(--muted); line-height: 1.5;
+  }
+  .trailer-fallback-link {
+    display: block; text-align: center; padding: 6px 16px 10px;
+    font-size: 12px; color: var(--muted); text-decoration: none;
+  }
+  .trailer-fallback-link:hover { color: var(--gold-2); text-decoration: underline; }
+  .result-genres { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .genre-tag { font-size: 11px; padding: 4px 10px; border-radius: 999px; background: rgba(255,255,255,0.07); color: var(--muted); }
+  .result-overview { font-size: 14px; line-height: 1.6; color: #d6d9e2; margin: 0 0 14px; }
+  .result-link { font-size: 12px; color: var(--gold-2); text-decoration: none; align-self: flex-start; }
+  .result-link:hover { text-decoration: underline; }
+
+  /* ===================== Мобильная адаптация ===================== */
+  @media (max-width: 640px) {
+    body { padding: 16px 10px 40px; }
+    .wrap { padding-top: 46px; } /* место под плавающую кнопку "История" */
+
+    header { margin-bottom: 20px; }
+    h1 { font-size: 23px; }
+    .subtitle { font-size: 12.5px; padding: 0 6px; }
+
+    .top-actions {
+      top: 12px;
+      right: 12px;
+      top: calc(12px + env(safe-area-inset-top, 0px));
+      right: calc(12px + env(safe-area-inset-right, 0px));
+      gap: 6px;
+    }
+    .history-btn, .favorites-btn {
+      padding: 7px 12px;
+      font-size: 10.5px;
+    }
+
+    .panel { padding: 16px; border-radius: 16px; }
+    .filter-block { margin-top: 16px; }
+
+    .pill { padding: 7px 12px; font-size: 12.5px; }
+    .quick-actions button { padding: 10px 6px; font-size: 12px; }
+
+    .reel-viewport { height: 190px; border-radius: 14px; }
+    .reel-track { height: 168px; }
+    .reel-frame { height: 180px; }
+    .reel-tile { height: 168px; }
+
+    .spin-btn { width: 100%; padding: 15px 20px; font-size: 15px; }
+
+    .result-card { margin-top: 22px; border-radius: 16px; }
+    .result-inner { padding: 18px; gap: 16px; }
+    .result-title { font-size: 19px; }
+    .watch-heart { width: 36px; height: 36px; top: 10px; right: 10px; }
+    .watch-heart svg { width: 17px; height: 17px; }
+    .result-actions { gap: 10px; }
+    .trailer-btn { width: 100%; padding: 12px 18px; font-size: 14px; }
+    .result-link { align-self: center; }
+
+    .modal-overlay { padding: 12px; align-items: flex-end; }
+    .modal-box { max-height: 88vh; border-radius: 18px 18px 0 0; }
+    .modal-header { padding: 14px 16px; }
+    .modal-body { padding: 14px 16px; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; }
+    .modal-footer { padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); }
+    .trailer-box { border-radius: 16px; max-height: none; }
+    .trailer-body { padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+    .actor-results { max-height: 180px; }
+  }
+
+  @media (max-width: 380px) {
+    h1 { font-size: 20px; }
+    .reel-tile { width: 108px; }
+    .top-actions { gap: 5px; }
+    .history-btn, .favorites-btn { padding: 6px 10px; font-size: 10px; }
+  }
+</style>
+</head>
+<body>
+<div class="top-actions">
+  <button class="history-btn" id="historyBtn" type="button">История <span id="historyCount">(0)</span></button>
+  <button class="favorites-btn" id="favoritesBtn" type="button">♥ Избранное <span id="favoritesCount">(0)</span></button>
+</div>
+
+<div class="modal-overlay hidden" id="historyModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2>Фильмы, которые уже выпадали</h2>
+      <button id="historyCloseBtn" type="button" title="Закрыть">×</button>
+    </div>
+    <div class="modal-body" id="historyGrid"></div>
+    <div class="modal-footer">
+      <button id="historyClearBtn" type="button">Очистить историю</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="favoritesModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2>Буду смотреть</h2>
+      <button id="favoritesCloseBtn" type="button" title="Закрыть">×</button>
+    </div>
+    <div class="modal-body" id="favoritesGrid"></div>
+    <div class="modal-footer">
+      <button id="favoritesClearBtn" type="button">Очистить избранное</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="trailerModal">
+  <div class="modal-box trailer-box">
+    <div class="modal-header">
+      <h2 id="trailerTitle">Трейлер</h2>
+      <button id="trailerCloseBtn" type="button" title="Закрыть">×</button>
+    </div>
+    <div class="trailer-body" id="trailerBody"></div>
+  </div>
+</div>
+
+<div class="wrap">
+  <header>
+    <h1>Рулетка <span>фильмов</span></h1>
+    <p class="subtitle">Выберите жанры и крутите — фильм выбирается случайно из базы TMDb (сотни тысяч фильмов)</p>
+  </header>
+
+  <div class="layout">
+    <div class="panel">
+      <h2>Жанры</h2>
+      <div class="genre-pills" id="genrePills">
+        <span style="color:var(--muted); font-size:13px;">Загрузка жанров…</span>
+      </div>
+      <div class="quick-actions">
+        <button id="selectAllBtn" type="button">Выбрать все</button>
+        <button id="selectNoneBtn" type="button">Снять всё</button>
+      </div>
+
+      <div class="filter-block">
+        <h2>Страна производства <span class="filter-hint">(можно до 5)</span></h2>
+        <div class="genre-pills" id="countryPills"></div>
+      </div>
+
+      <div class="filter-block">
+        <h2>Актёр</h2>
+        <div class="actor-search-wrap">
+          <input type="text" id="actorInput" class="select-field" placeholder="Введите имя актёра…" autocomplete="off">
+          <div class="actor-results hidden" id="actorResults"></div>
+        </div>
+        <div class="actor-chip hidden" id="actorChip">
+          <img id="actorChipImg" src="" alt="">
+          <span id="actorChipName"></span>
+          <button id="actorChipRemove" type="button" title="Убрать актёра">×</button>
+        </div>
+      </div>
+
+      <div class="filter-block">
+        <h2>Год выпуска</h2>
+        <div class="year-range">
+          <input type="number" id="yearFrom" placeholder="от" min="1960" max="2030">
+          <span>—</span>
+          <input type="number" id="yearTo" placeholder="до" min="1960" max="2030">
+        </div>
+      </div>
+
+      <div class="attribution">
+        Данные, постеры и описания предоставлены <a href="https://www.themoviedb.org/" target="_blank" rel="noopener">TMDb</a>. Этот продукт использует API TMDb, но не одобрен и не сертифицирован TMDb.
+      </div>
+    </div>
+
+    <div class="panel stage">
+      <div class="reel-viewport" id="reelViewport">
+        <div class="placeholder" id="reelPlaceholder">Нажмите «Крутить рулетку», чтобы выбрать фильм</div>
+        <div class="reel-track" id="reelTrack"></div>
+        <div class="reel-frame"></div>
+        <div class="reel-fade left"></div>
+        <div class="reel-fade right"></div>
+      </div>
+
+      <button class="spin-btn" id="spinBtn" type="button">Крутить рулетку</button>
+      <div class="error-box hidden" id="errorBox"></div>
+
+      <div class="result-card" id="resultCard">
+        <div class="result-backdrop" id="resultBackdrop"></div>
+        <button class="watch-heart" id="watchHeartBtn" type="button" title="Буду смотреть" aria-label="Буду смотреть">
+          <svg viewBox="0 0 24 24"><path d="M12 20.6l-1.4-1.3C5.4 14.6 2 11.5 2 7.9 2 5 4.3 2.7 7.2 2.7c1.6 0 3.2.8 4.1 2 .9-1.2 2.5-2 4.1-2 2.9 0 5.2 2.3 5.2 5.2 0 3.6-3.4 6.7-8.6 11.4L12 20.6z"/></svg>
+        </button>
+        <div class="result-inner">
+          <img class="result-poster" id="resPoster" src="" alt="">
+          <div class="result-body">
+            <h3 class="result-title" id="resTitle">Название</h3>
+            <div class="result-meta">
+              <span id="resYear">Год</span>
+              <span class="rating" id="resRating">
+                <svg viewBox="0 0 20 20"><path d="M10 1.5l2.6 5.9 6.4.6-4.8 4.3 1.4 6.3L10 15.6 4.4 18.6l1.4-6.3L1 7.9l6.4-.6z"/></svg>
+                <span id="resRatingValue">0.0</span>
+              </span>
+              <span id="resVotes"></span>
+            </div>
+            <div class="result-genres" id="resGenres"></div>
+            <p class="result-overview" id="resOverview"></p>
+            <div class="result-actions">
+              <button class="trailer-btn" id="trailerBtn" type="button">▶ Смотреть трейлер</button>
+              <a class="result-link" id="resLink" href="#" target="_blank" rel="noopener">Открыть страницу фильма на TMDb →</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ⚠️ Бесплатный API-ключ TMDb. Для личного некоммерческого использования это
+  // нормально хранить прямо в клиентском коде — ключ не даёт доступа к деньгам
+  // или личным данным, максимум что грозит — исчерпание бесплатного лимита запросов.
+  const API_KEY = 'baf011ef0382f9cc04a0f69ec8ec82c5';
+  const API_BASE = 'https://api.themoviedb.org/3';
+  const IMG_BASE = 'https://image.tmdb.org/t/p/';
+
+  // Реальный шаг между тайлами ленты меряется из DOM в measureTileStep() —
+  // это надёжнее жёстко зашитого числа, которое легко рассинхронизировать с CSS
+  // (например, при адаптации под маленькие экраны).
+  function measureTileStep() {
+    const first = reelTrack.children[0];
+    const second = reelTrack.children[1];
+    if (first && second) {
+      const step = second.getBoundingClientRect().left - first.getBoundingClientRect().left;
+      if (step > 0) return step;
+    }
+    if (first) {
+      const rect = first.getBoundingClientRect();
+      const cs = getComputedStyle(first);
+      return rect.width + parseFloat(cs.marginLeft || 0) + parseFloat(cs.marginRight || 0);
+    }
+    return 146; // резервное значение, если тайлов почему-то ещё нет в DOM
+  }
+
+  const genrePillsEl = document.getElementById('genrePills');
+  const reelViewport = document.getElementById('reelViewport');
+  const reelTrack = document.getElementById('reelTrack');
+  const reelPlaceholder = document.getElementById('reelPlaceholder');
+  const spinBtn = document.getElementById('spinBtn');
+  const errorBox = document.getElementById('errorBox');
+  const resultCard = document.getElementById('resultCard');
+
+  const COUNTRIES = [
+    { code: 'US', name: 'США' },
+    { code: 'GB', name: 'Великобритания' },
+    { code: 'RU', name: 'Россия' },
+    { code: 'FR', name: 'Франция' },
+    { code: 'DE', name: 'Германия' },
+    { code: 'IT', name: 'Италия' },
+    { code: 'ES', name: 'Испания' },
+    { code: 'KR', name: 'Южная Корея' },
+    { code: 'JP', name: 'Япония' },
+    { code: 'CN', name: 'Китай' },
+    { code: 'HK', name: 'Гонконг' },
+    { code: 'IN', name: 'Индия' },
+    { code: 'CA', name: 'Канада' },
+    { code: 'AU', name: 'Австралия' },
+    { code: 'SE', name: 'Швеция' },
+    { code: 'DK', name: 'Дания' },
+    { code: 'PL', name: 'Польша' },
+    { code: 'TR', name: 'Турция' },
+    { code: 'BR', name: 'Бразилия' },
+    { code: 'MX', name: 'Мексика' },
+    { code: 'TH', name: 'Таиланд' },
+    { code: 'IR', name: 'Иран' },
+    { code: 'NG', name: 'Нигерия' }
+  ];
+  const MAX_COUNTRIES = 5;
+
+  let genreMap = {};      // id -> название
+  let selectedGenres = new Set();
+  let selectedCountries = new Set(); // пусто = любая страна
+  let selectedActor = null;          // { id, name }
+  let spinning = false;
+
+  // --- История уже выпадавших фильмов (хранится в localStorage браузера) ---
+  const HISTORY_KEY = 'movieRouletteHistory_v1';
+
+  function loadHistoryFromStorage() {
+    try {
+      const raw = localStorage.getItem(HISTORY_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) { return []; }
+  }
+  function saveHistoryToStorage() {
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(watchHistory)); } catch (e) {}
+  }
+
+  let watchHistory = loadHistoryFromStorage();     // полные объекты фильмов, новые сверху
+  let seenIds = new Set(watchHistory.map(m => m.id));
+
+  function updateHistoryCount() {
+    document.getElementById('historyCount').textContent = '(' + watchHistory.length + ')';
+  }
+
+  function addToHistory(movie) {
+    if (seenIds.has(movie.id)) return;
+    seenIds.add(movie.id);
+    watchHistory.unshift(Object.assign({}, movie, { seenAt: new Date().toISOString() }));
+    saveHistoryToStorage();
+    updateHistoryCount();
+  }
+
+  // Удаляет один фильм из истории — он снова сможет выпасть в рулетке.
+  function removeFromHistory(id) {
+    watchHistory = watchHistory.filter(m => m.id !== id);
+    seenIds.delete(id);
+    saveHistoryToStorage();
+    updateHistoryCount();
+  }
+
+  // --- Список "буду смотреть" (сердечко на карточке результата) ---
+  const WATCHLIST_KEY = 'movieRouletteWatchlist_v1';
+
+  function loadWatchlistFromStorage() {
+    try {
+      const raw = localStorage.getItem(WATCHLIST_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) { return []; }
+  }
+  function saveWatchlistToStorage() {
+    try { localStorage.setItem(WATCHLIST_KEY, JSON.stringify(watchlist)); } catch (e) {}
+  }
+
+  let watchlist = loadWatchlistFromStorage();
+  let watchlistIds = new Set(watchlist.map(m => m.id));
+  let currentResultMovie = null;
+
+  function updateWatchHeart(movie) {
+    const heartBtn = document.getElementById('watchHeartBtn');
+    if (!heartBtn || !movie) return;
+    heartBtn.classList.toggle('active', watchlistIds.has(movie.id));
+  }
+
+  function updateFavoritesCount() {
+    document.getElementById('favoritesCount').textContent = '(' + watchlist.length + ')';
+  }
+
+  function toggleWatchlist(movie) {
+    if (!movie) return;
+    if (watchlistIds.has(movie.id)) {
+      watchlistIds.delete(movie.id);
+      watchlist = watchlist.filter(m => m.id !== movie.id);
+    } else {
+      watchlistIds.add(movie.id);
+      watchlist.unshift(Object.assign({}, movie, { addedAt: new Date().toISOString() }));
+    }
+    saveWatchlistToStorage();
+    updateFavoritesCount();
+    updateWatchHeart(movie);
+  }
+
+  // Удаление одного фильма из "Избранного" (например, крестиком в модалке).
+  function removeFromWatchlist(id) {
+    watchlistIds.delete(id);
+    watchlist = watchlist.filter(m => m.id !== id);
+    saveWatchlistToStorage();
+    updateFavoritesCount();
+    if (currentResultMovie && currentResultMovie.id === id) updateWatchHeart(currentResultMovie);
+  }
+
+  function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+
+  function showError(msg) {
+    errorBox.textContent = msg;
+    errorBox.classList.remove('hidden');
+  }
+  function hideError() { errorBox.classList.add('hidden'); }
+
+  function shuffle(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  async function apiGet(path, params) {
+    const url = new URL(API_BASE + path);
+    url.searchParams.set('api_key', API_KEY);
+    url.searchParams.set('language', 'ru-RU');
+    Object.entries(params || {}).forEach(([k, v]) => url.searchParams.set(k, v));
+    const res = await fetch(url.toString());
+    if (!res.ok) {
+      throw new Error('TMDb вернул ошибку (' + res.status + '). Проверьте API-ключ или соединение с интернетом.');
+    }
+    return res.json();
+  }
+
+  async function loadGenres() {
+    try {
+      const data = await apiGet('/genre/movie/list', {});
+      (data.genres || []).forEach(g => { genreMap[g.id] = g.name; });
+      renderGenrePills();
+    } catch (e) {
+      genrePillsEl.innerHTML = '';
+      showError('Не удалось загрузить список жанров: ' + e.message);
+    }
+  }
+
+  function renderGenrePills() {
+    genrePillsEl.innerHTML = '';
+    Object.entries(genreMap).forEach(([id, name]) => {
+      id = Number(id);
+      const pill = document.createElement('div');
+      pill.className = 'pill';
+      pill.textContent = cap(name);
+      pill.dataset.id = id;
+      pill.addEventListener('click', () => {
+        if (selectedGenres.has(id)) { selectedGenres.delete(id); pill.classList.remove('active'); }
+        else { selectedGenres.add(id); pill.classList.add('active'); }
+      });
+      genrePillsEl.appendChild(pill);
+    });
+  }
+
+  document.getElementById('selectAllBtn').addEventListener('click', () => {
+    selectedGenres = new Set(Object.keys(genreMap).map(Number));
+    genrePillsEl.querySelectorAll('.pill').forEach(p => p.classList.add('active'));
+  });
+  document.getElementById('selectNoneBtn').addEventListener('click', () => {
+    selectedGenres.clear();
+    genrePillsEl.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+  });
+
+  // --- Страна производства (мультивыбор, максимум MAX_COUNTRIES штук) ---
+  const countryPillsEl = document.getElementById('countryPills');
+  function renderCountryPills() {
+    countryPillsEl.innerHTML = '';
+    COUNTRIES.forEach(c => {
+      const pill = document.createElement('div');
+      pill.className = 'pill' + (selectedCountries.has(c.code) ? ' active' : '');
+      pill.textContent = c.name;
+      pill.dataset.code = c.code;
+      pill.addEventListener('click', () => {
+        if (selectedCountries.has(c.code)) {
+          selectedCountries.delete(c.code);
+          pill.classList.remove('active');
+        } else {
+          if (selectedCountries.size >= MAX_COUNTRIES) {
+            showError('Можно выбрать не более ' + MAX_COUNTRIES + ' стран одновременно.');
+            setTimeout(hideError, 2500);
+            return;
+          }
+          selectedCountries.add(c.code);
+          pill.classList.add('active');
+        }
+      });
+      countryPillsEl.appendChild(pill);
+    });
+  }
+  renderCountryPills();
+
+  // --- Поиск и выбор актёра ---
+  const actorInput = document.getElementById('actorInput');
+  const actorResultsEl = document.getElementById('actorResults');
+  const actorChip = document.getElementById('actorChip');
+  let actorSearchTimer = null;
+
+  function selectActor(person) {
+    selectedActor = { id: person.id, name: person.name };
+    document.getElementById('actorChipImg').src = person.profile_path ? (IMG_BASE + 'w92' + person.profile_path) : '';
+    document.getElementById('actorChipName').textContent = person.name;
+    actorChip.classList.remove('hidden');
+    actorInput.value = '';
+    actorResultsEl.classList.add('hidden');
+    actorResultsEl.innerHTML = '';
+  }
+
+  function clearActor() {
+    selectedActor = null;
+    actorChip.classList.add('hidden');
+  }
+
+  document.getElementById('actorChipRemove').addEventListener('click', clearActor);
+
+  actorInput.addEventListener('input', () => {
+    const query = actorInput.value.trim();
+    clearTimeout(actorSearchTimer);
+    if (query.length < 2) {
+      actorResultsEl.classList.add('hidden');
+      actorResultsEl.innerHTML = '';
+      return;
+    }
+    actorSearchTimer = setTimeout(async () => {
+      try {
+        const data = await apiGet('/search/person', { query: query });
+        const people = (data.results || []).filter(p => p.known_for_department === 'Acting').slice(0, 8);
+        if (people.length === 0) {
+          actorResultsEl.innerHTML = '<div class="actor-result-item" style="cursor:default; color:var(--muted);">Никого не нашлось</div>';
+          actorResultsEl.classList.remove('hidden');
+          return;
+        }
+        actorResultsEl.innerHTML = '';
+        people.forEach(p => {
+          const item = document.createElement('div');
+          item.className = 'actor-result-item';
+          const imgSrc = p.profile_path ? (IMG_BASE + 'w92' + p.profile_path) : '';
+          item.innerHTML = `<img src="${imgSrc}" alt=""><span>${p.name}</span>`;
+          item.addEventListener('click', () => selectActor(p));
+          actorResultsEl.appendChild(item);
+        });
+        actorResultsEl.classList.remove('hidden');
+      } catch (e) {
+        actorResultsEl.classList.add('hidden');
+      }
+    }, 400);
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.actor-search-wrap')) {
+      actorResultsEl.classList.add('hidden');
+    }
+  });
+
+  function getFilters() {
+    const yearFrom = document.getElementById('yearFrom').value.trim();
+    const yearTo = document.getElementById('yearTo').value.trim();
+    return {
+      genreIds: Array.from(selectedGenres),
+      countries: Array.from(selectedCountries),
+      actorId: selectedActor ? selectedActor.id : null,
+      yearFrom: yearFrom,
+      yearTo: yearTo
+    };
+  }
+
+  async function fetchDiscoverPage(filters, page) {
+    const params = {
+      sort_by: 'popularity.desc',
+      include_adult: 'false',
+      'vote_count.gte': '150',
+      with_genres: filters.genreIds.join('|'),
+      page: String(page)
+    };
+    if (filters.countries && filters.countries.length > 0) params.with_origin_country = filters.countries.join('|');
+    if (filters.actorId) params.with_cast = String(filters.actorId);
+    if (filters.yearFrom) params['primary_release_date.gte'] = filters.yearFrom + '-01-01';
+    if (filters.yearTo) params['primary_release_date.lte'] = filters.yearTo + '-12-31';
+    return apiGet('/discover/movie', params);
+  }
+
+  function goodCandidate(m) {
+    return !!(m.poster_path && m.overview && m.overview.trim().length > 0);
+  }
+  function notSeen(m) {
+    return !seenIds.has(m.id);
+  }
+
+  // Пытается найти случайный ещё не показанный фильм. Страница №1 используется
+  // ТОЛЬКО чтобы узнать total_pages — сам выбор всегда идёт по-настоящему случайной
+  // странице (иначе рулетка постоянно скатывается к горстке самых популярных
+  // новинок, которые всегда занимают первые места в выдаче TMDb).
+  async function pickRandomMovie(filters) {
+    const first = await fetchDiscoverPage(filters, 1);
+    if (!first.total_results) return { error: 'empty' };
+
+    const maxPage = Math.max(1, Math.min(first.total_pages || 1, 500));
+    const maxAttempts = 8;
+    const triedPages = new Set();
+
+    // Копим постеры со всех просмотренных за это вращение страниц — пригодятся
+    // как декоративный "фарш" для ленты рулетки, чтобы там было больше разных
+    // постеров и не приходилось повторять один и тот же в соседних карточках.
+    const visualPoolMap = new Map();
+    function collectVisual(results) {
+      (results || []).forEach(m => {
+        if (m.poster_path && !visualPoolMap.has(m.id)) visualPoolMap.set(m.id, m);
+      });
+    }
+    collectVisual(first.results);
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      let page = Math.floor(Math.random() * maxPage) + 1;
+      // стараемся не дёргать одну и ту же страницу дважды подряд за один спин
+      let guard = 0;
+      while (triedPages.has(page) && guard < 5 && triedPages.size < maxPage) {
+        page = Math.floor(Math.random() * maxPage) + 1;
+        guard++;
+      }
+      triedPages.add(page);
+
+      const data = (page === 1) ? first : await fetchDiscoverPage(filters, page);
+      collectVisual(data.results);
+
+      const fresh = (data.results || []).filter(goodCandidate).filter(notSeen);
+      if (fresh.length > 0) {
+        const winner = fresh[Math.floor(Math.random() * fresh.length)];
+        return { winner, pool: fresh, visualPool: Array.from(visualPoolMap.values()) };
+      }
+    }
+
+    return { error: 'exhausted' };
+  }
+
+  // Строит декоративную ленту так, чтобы один и тот же постер никогда не стоял
+  // в двух соседних карточках, а постер победителя не "спойлерился" заранее
+  // среди фарша (он появляется только в точке остановки).
+  function buildTiles(visualPool, winner) {
+    const beforeCount = 76;
+    const afterCount = 6;
+    const total = beforeCount + afterCount;
+
+    const source = (visualPool && visualPool.length > 0 ? visualPool : [winner]).filter(m => m.id !== winner.id);
+    const usable = source.length > 0 ? source : [winner];
+
+    let deck = shuffle(usable);
+    const filler = [];
+    while (filler.length < total) {
+      if (deck.length === 0) deck = shuffle(usable);
+      let next = deck.shift();
+      const prev = filler[filler.length - 1];
+      if (prev && prev.id === next.id && deck.length > 0) {
+        deck.push(next);
+        next = deck.shift();
+      }
+      filler.push(next);
+    }
+
+    const before = filler.slice(0, beforeCount);
+    const after = filler.slice(beforeCount, total);
+
+    return { tiles: [...before, winner, ...after], winnerIndex: beforeCount };
+  }
+
+  // Прогружает картинки в кэш браузера заранее, чтобы потом <img src=...>
+  // отрисовалась мгновенно, а не серым квадратом. Не виснет дольше timeoutMs
+  // на одной "залипшей" картинке.
+  function preloadImages(urls, timeoutMs) {
+    return Promise.all(urls.map(url => new Promise(resolve => {
+      if (!url) { resolve(); return; }
+      let done = false;
+      const finish = () => { if (!done) { done = true; resolve(); } };
+      const img = new Image();
+      img.onload = finish;
+      img.onerror = finish;
+      img.src = url;
+      setTimeout(finish, timeoutMs || 4000);
+    })));
+  }
+
+  async function animateReel(pool, winner, onDone) {
+    reelPlaceholder.classList.add('hidden');
+    const { tiles, winnerIndex } = buildTiles(pool, winner);
+    const urls = tiles.map(m => IMG_BASE + 'w185' + m.poster_path);
+
+    spinBtn.textContent = 'Загружаю постеры…';
+    await preloadImages(urls, 6000);
+    spinBtn.textContent = 'Крутится…';
+
+    reelTrack.style.transition = 'none';
+    reelTrack.style.transform = 'translateX(0px)';
+    reelTrack.innerHTML = tiles.map(m =>
+      `<div class="reel-tile"><img src="${IMG_BASE}w185${m.poster_path}" alt="${(m.title || '').replace(/"/g, '')}"></div>`
+    ).join('');
+
+    // Форсируем перерасчёт стилей, чтобы следующий transition сработал корректно
+    void reelTrack.offsetWidth;
+
+    // Измеряем реальный шаг между тайлами из DOM (а не берём константу), чтобы
+    // расчёт точки остановки не разъезжался при любых изменениях размеров в CSS
+    // (например, на маленьких экранах телефона).
+    const tileStep = measureTileStep();
+    const viewportWidth = reelViewport.clientWidth;
+    const targetCenter = winnerIndex * tileStep + tileStep / 2;
+    const finalX = viewportWidth / 2 - targetCenter;
+
+    requestAnimationFrame(() => {
+      reelTrack.style.transition = 'transform 11s cubic-bezier(0.09, 0.62, 0.14, 1)';
+      reelTrack.style.transform = `translateX(${finalX}px)`;
+    });
+
+    // Пока лента крутится, заранее грузим большой постер и фон победителя —
+    // к моменту остановки карточка результата откроется без задержки.
+    if (winner.poster_path) { const p = new Image(); p.src = IMG_BASE + 'w500' + winner.poster_path; }
+    const bg = winner.backdrop_path || winner.poster_path;
+    if (bg) { const b = new Image(); b.src = IMG_BASE + 'w780' + bg; }
+
+    const onEnd = () => {
+      reelTrack.removeEventListener('transitionend', onEnd);
+      const winnerTile = reelTrack.children[winnerIndex];
+      if (winnerTile) winnerTile.classList.add('winner');
+      onDone();
+    };
+    reelTrack.addEventListener('transitionend', onEnd);
+  }
+
+  function revealResult(movie) {
+    currentResultMovie = movie;
+    const backdrop = document.getElementById('resultBackdrop');
+    const posterPath = movie.backdrop_path || movie.poster_path;
+    backdrop.style.backgroundImage = posterPath ? `url(${IMG_BASE}w780${posterPath})` : 'none';
+
+    updateWatchHeart(movie);
+    document.getElementById('resPoster').src = movie.poster_path ? (IMG_BASE + 'w500' + movie.poster_path) : '';
+    document.getElementById('resTitle').textContent = movie.title || movie.original_title || 'Без названия';
+    document.getElementById('resYear').textContent = movie.release_date ? movie.release_date.slice(0, 4) : 'Год неизвестен';
+    document.getElementById('resRatingValue').textContent = (movie.vote_average || 0).toFixed(1);
+    document.getElementById('resVotes').textContent = movie.vote_count
+      ? movie.vote_count.toLocaleString('ru-RU') + ' оценок'
+      : '';
+    document.getElementById('resOverview').textContent = movie.overview || 'Описание отсутствует.';
+    document.getElementById('resLink').href = 'https://www.themoviedb.org/movie/' + movie.id + '?language=ru';
+
+    const genresEl = document.getElementById('resGenres');
+    genresEl.innerHTML = (movie.genre_ids || [])
+      .map(id => genreMap[id] ? `<span class="genre-tag">${cap(genreMap[id])}</span>` : '')
+      .join('');
+
+    resultCard.classList.add('show');
+  }
+
+  async function spin() {
+    if (spinning) return;
+    const filters = getFilters();
+    if (filters.genreIds.length === 0) {
+      showError('Выберите хотя бы один жанр!');
+      return;
+    }
+    if (filters.yearFrom && filters.yearTo && Number(filters.yearFrom) > Number(filters.yearTo)) {
+      showError('Год «от» не может быть больше года «до».');
+      return;
+    }
+
+    hideError();
+    resultCard.classList.remove('show');
+    spinning = true;
+    spinBtn.disabled = true;
+    spinBtn.textContent = 'Ищу фильм…';
+
+    try {
+      const picked = await pickRandomMovie(filters);
+      if (picked.error === 'empty') {
+        showError('Не нашлось фильмов под выбранные фильтры — попробуйте другой набор.');
+        spinning = false;
+        spinBtn.disabled = false;
+        spinBtn.textContent = 'Крутить рулетку';
+        return;
+      }
+      if (picked.error === 'exhausted') {
+        showError('Рулетка уже показывала все фильмы под эти фильтры! Откройте «Историю» или попробуйте другие фильтры.');
+        spinning = false;
+        spinBtn.disabled = false;
+        spinBtn.textContent = 'Крутить рулетку';
+        return;
+      }
+      spinBtn.textContent = 'Крутится…';
+      animateReel(picked.visualPool, picked.winner, () => {
+        spinning = false;
+        spinBtn.disabled = false;
+        spinBtn.textContent = 'Крутить ещё раз';
+        revealResult(picked.winner);
+        addToHistory(picked.winner);
+      });
+    } catch (e) {
+      showError(e.message || 'Не удалось получить данные от TMDb.');
+      spinning = false;
+      spinBtn.disabled = false;
+      spinBtn.textContent = 'Крутить рулетку';
+    }
+  }
+
+  // --- Модальное окно "История" ---
+  const historyModal = document.getElementById('historyModal');
+  const historyGrid = document.getElementById('historyGrid');
+
+  function renderHistoryModal() {
+    historyGrid.innerHTML = '';
+    if (watchHistory.length === 0) {
+      historyGrid.innerHTML = '<div class="empty-hint">Пока пусто — покрутите рулетку хотя бы раз.</div>';
+      return;
+    }
+    watchHistory.forEach(m => {
+      const year = m.release_date ? m.release_date.slice(0, 4) : '';
+      const img = m.poster_path ? (IMG_BASE + 'w185' + m.poster_path) : '';
+      const item = document.createElement('div');
+      item.className = 'history-item';
+      const rating = (m.vote_average || 0).toFixed(1);
+      item.innerHTML = `<div class="h-poster-wrap"><button class="h-remove" type="button" title="Удалить из истории">×</button><img src="${img}" alt=""></div><div class="h-title">${m.title || ''}</div><div class="h-meta"><span class="h-year">${year}</span><span class="h-rating">★ ${rating}</span></div>`;
+      item.querySelector('.h-remove').addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeFromHistory(m.id);
+        renderHistoryModal();
+      });
+      item.addEventListener('click', () => {
+        historyModal.classList.add('hidden');
+        revealResult(m);
+        resultCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+      historyGrid.appendChild(item);
+    });
+  }
+
+  document.getElementById('historyBtn').addEventListener('click', () => {
+    renderHistoryModal();
+    historyModal.classList.remove('hidden');
+  });
+  document.getElementById('historyCloseBtn').addEventListener('click', () => {
+    historyModal.classList.add('hidden');
+  });
+  historyModal.addEventListener('click', (e) => {
+    if (e.target === historyModal) historyModal.classList.add('hidden');
+  });
+  document.getElementById('historyClearBtn').addEventListener('click', () => {
+    if (!confirm('Очистить всю историю просмотренных рулеткой фильмов? Они снова смогут выпадать.')) return;
+    watchHistory = [];
+    seenIds.clear();
+    saveHistoryToStorage();
+    updateHistoryCount();
+    renderHistoryModal();
+  });
+
+  document.getElementById('watchHeartBtn').addEventListener('click', () => {
+    toggleWatchlist(currentResultMovie);
+  });
+
+  // --- Трейлер выпавшего фильма ---
+  const trailerModal = document.getElementById('trailerModal');
+  const trailerBody = document.getElementById('trailerBody');
+  const trailerBtn = document.getElementById('trailerBtn');
+
+  async function fetchTrailerKey(movieId) {
+    async function tryLang(lang) {
+      const data = await apiGet('/movie/' + movieId + '/videos', lang ? { language: lang } : {});
+      const vids = (data && data.results) || [];
+      const youtube = vids.filter(v => v.site === 'YouTube');
+      if (!youtube.length) return null;
+      return (
+        youtube.find(v => v.type === 'Trailer' && v.official) ||
+        youtube.find(v => v.type === 'Trailer') ||
+        youtube.find(v => v.type === 'Teaser') ||
+        youtube[0]
+      ).key;
+    }
+    let key = null;
+    try { key = await tryLang('ru-RU'); } catch (e) {}
+    if (!key) { try { key = await tryLang('en-US'); } catch (e) {} }
+    return key;
+  }
+
+  function closeTrailerModal() {
+    trailerModal.classList.add('hidden');
+    trailerBody.innerHTML = ''; // останавливает видео при закрытии
+  }
+
+  trailerBtn.addEventListener('click', async () => {
+    if (!currentResultMovie) return;
+    document.getElementById('trailerTitle').textContent =
+      'Трейлер: ' + (currentResultMovie.title || currentResultMovie.original_title || '');
+    trailerBody.innerHTML = '<div class="trailer-video-wrap"><div class="trailer-msg">Ищем трейлер на TMDb…</div></div>';
+    trailerModal.classList.remove('hidden');
+
+    const originalLabel = trailerBtn.textContent;
+    trailerBtn.disabled = true;
+
+    // Условный прогресс на кнопке, чтобы не было ощущения, что всё зависло.
+    // Быстро растёт вначале и замедляется ближе к 95% — реальную скорость
+    // сети заранее не узнать, но так пользователь видит, что процесс идёт.
+    let fakePercent = 0;
+    const progressTimer = setInterval(() => {
+      fakePercent += Math.max(1, (95 - fakePercent) / 6);
+      if (fakePercent > 95) fakePercent = 95;
+      trailerBtn.textContent = 'Загрузка… ' + Math.floor(fakePercent) + '%';
+    }, 110);
+
+    try {
+      const key = await fetchTrailerKey(currentResultMovie.id);
+      clearInterval(progressTimer);
+      trailerBtn.textContent = 'Загрузка… 100%';
+      if (!trailerModal.classList.contains('hidden')) {
+        if (key) {
+          trailerBody.innerHTML =
+            '<div class="trailer-video-wrap"><iframe src="https://www.youtube-nocookie.com/embed/' + key + '?autoplay=1&rel=0&playsinline=1" ' +
+            'title="Трейлер" referrerpolicy="strict-origin-when-cross-origin" ' +
+            'allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div>' +
+            '<div class="trailer-quality-hint">Низкое качество? Нажмите ⚙ в правом нижнем углу плеера и выберите вручную (720p / 1080p).</div>' +
+            '<a class="trailer-fallback-link" href="https://www.youtube.com/watch?v=' + key + '" target="_blank" rel="noopener">' +
+            'Если видео не открылось — посмотреть на YouTube →</a>';
+        } else {
+          trailerBody.innerHTML = '<div class="trailer-video-wrap"><div class="trailer-msg">Трейлер для этого фильма не найден на TMDb.</div></div>';
+        }
+      }
+    } catch (e) {
+      clearInterval(progressTimer);
+      trailerBody.innerHTML = '<div class="trailer-video-wrap"><div class="trailer-msg">Не удалось загрузить трейлер. Проверьте соединение с интернетом.</div></div>';
+    } finally {
+      setTimeout(() => {
+        trailerBtn.textContent = originalLabel;
+        trailerBtn.disabled = false;
+      }, 250);
+    }
+  });
+
+  document.getElementById('trailerCloseBtn').addEventListener('click', closeTrailerModal);
+  trailerModal.addEventListener('click', (e) => {
+    if (e.target === trailerModal) closeTrailerModal();
+  });
+
+  // --- Модальное окно "Избранное" (буду смотреть) ---
+  const favoritesModal = document.getElementById('favoritesModal');
+  const favoritesGrid = document.getElementById('favoritesGrid');
+
+  function renderFavoritesModal() {
+    favoritesGrid.innerHTML = '';
+    if (watchlist.length === 0) {
+      favoritesGrid.innerHTML = '<div class="empty-hint">Пока пусто — нажмите на сердечко у понравившегося фильма.</div>';
+      return;
+    }
+    watchlist.forEach(m => {
+      const year = m.release_date ? m.release_date.slice(0, 4) : '';
+      const img = m.poster_path ? (IMG_BASE + 'w185' + m.poster_path) : '';
+      const item = document.createElement('div');
+      item.className = 'history-item';
+      const rating = (m.vote_average || 0).toFixed(1);
+      item.innerHTML = `<div class="h-poster-wrap"><button class="h-remove" type="button" title="Убрать из избранного">×</button><img src="${img}" alt=""></div><div class="h-title">${m.title || ''}</div><div class="h-meta"><span class="h-year">${year}</span><span class="h-rating">★ ${rating}</span></div>`;
+      item.querySelector('.h-remove').addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeFromWatchlist(m.id);
+        renderFavoritesModal();
+      });
+      item.addEventListener('click', () => {
+        favoritesModal.classList.add('hidden');
+        revealResult(m);
+        resultCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+      favoritesGrid.appendChild(item);
+    });
+  }
+
+  document.getElementById('favoritesBtn').addEventListener('click', () => {
+    renderFavoritesModal();
+    favoritesModal.classList.remove('hidden');
+  });
+  document.getElementById('favoritesCloseBtn').addEventListener('click', () => {
+    favoritesModal.classList.add('hidden');
+  });
+  favoritesModal.addEventListener('click', (e) => {
+    if (e.target === favoritesModal) favoritesModal.classList.add('hidden');
+  });
+  document.getElementById('favoritesClearBtn').addEventListener('click', () => {
+    if (!confirm('Очистить весь список "буду смотреть"?')) return;
+    watchlist = [];
+    watchlistIds.clear();
+    saveWatchlistToStorage();
+    updateFavoritesCount();
+    if (currentResultMovie) updateWatchHeart(currentResultMovie);
+    renderFavoritesModal();
+  });
+
+  spinBtn.addEventListener('click', spin);
+  updateHistoryCount();
+  updateFavoritesCount();
+  loadGenres();
+</script>
+</body>
+</html>
