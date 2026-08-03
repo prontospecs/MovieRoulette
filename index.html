@@ -8,6 +8,64 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#000000">
 <title>Рулетка фильмов и сериалов</title>
+<script type="module">
+  // Аккаунты и синхронизация Истории/Избранного между устройствами — через
+  // Firebase (бесплатный тариф Spark). Логин без почты: пользователь вводит
+  // только логин+пароль, а внутрь Firebase Auth подставляется фиктивный адрес
+  // вида "login@movie-roulette.local" — снаружи это выглядит как обычный вход
+  // по логину. Модульный скрипт откладывается браузером до конца парсинга
+  // документа, поэтому весь остальной код (обычный <script> ниже) обращается
+  // к window.AppAuth только из обработчиков событий/DOMContentLoaded, а не
+  // сразу на верхнем уровне — иначе объект ещё может быть не готов.
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.0/firebase-app.js";
+  import {
+    getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
+    onAuthStateChanged, signOut, updateProfile
+  } from "https://www.gstatic.com/firebasejs/12.17.0/firebase-auth.js";
+  import {
+    getFirestore, doc, getDoc, setDoc
+  } from "https://www.gstatic.com/firebasejs/12.17.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyDs6o7GPCxZHJZo5z6bKE8dSuUTlueWD9Q",
+    authDomain: "movie--roulette.firebaseapp.com",
+    projectId: "movie--roulette",
+    storageBucket: "movie--roulette.firebasestorage.app",
+    messagingSenderId: "989746814040",
+    appId: "1:989746814040:web:aed497b0ea55712a32fe2d",
+    measurementId: "G-STG8ZK0HM1"
+  };
+
+  const fbApp = initializeApp(firebaseConfig);
+  const auth = getAuth(fbApp);
+  const db = getFirestore(fbApp);
+  const EMAIL_DOMAIN = '@movie-roulette.local';
+
+  window.AppAuth = {
+    async register(login, password) {
+      const cred = await createUserWithEmailAndPassword(auth, login.toLowerCase() + EMAIL_DOMAIN, password);
+      await updateProfile(cred.user, { displayName: login });
+      return cred.user;
+    },
+    async login(login, password) {
+      const cred = await signInWithEmailAndPassword(auth, login.toLowerCase() + EMAIL_DOMAIN, password);
+      return cred.user;
+    },
+    logout() {
+      return signOut(auth);
+    },
+    onChange(cb) {
+      onAuthStateChanged(auth, cb);
+    },
+    async loadCloudData(uid) {
+      const snap = await getDoc(doc(db, 'users', uid));
+      return snap.exists() ? snap.data() : null;
+    },
+    async saveCloudData(uid, data) {
+      return setDoc(doc(db, 'users', uid), data, { merge: true });
+    }
+  };
+</script>
 <style>
   :root {
     --bg: #000000;
@@ -111,6 +169,20 @@
   }
   .quick-actions button:hover { color: var(--text); border-color: var(--gold); }
 
+  /* "Любой из выбранных" (ИЛИ) против "все сразу в одном фильме" (И) — TMDb
+     под капотом различает их через with_genres=a,b (И) вместо a|b (ИЛИ). */
+  .genre-mode-row { display: flex; align-items: center; gap: 8px; margin: 6px 0 12px; flex-wrap: wrap; }
+  .mode-toggle {
+    display: inline-flex; gap: 3px; padding: 3px;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 999px;
+  }
+  .mode-btn {
+    padding: 5px 11px; border-radius: 999px; border: none; background: transparent;
+    color: var(--muted); font-size: 11px; font-weight: 600; cursor: pointer;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  }
+  .mode-btn.active { background: var(--gold); color: #241a05; }
+
   .filter-block { margin-top: 20px; }
   .select-field, .year-range input {
     width: 100%;
@@ -170,6 +242,40 @@
   }
   .history-btn:hover { border-color: var(--gold); color: var(--gold-2); }
   .favorites-btn:hover { border-color: var(--danger); color: #ff9a9a; }
+
+  .top-actions-left {
+    position: fixed;
+    top: 22px;
+    left: 22px;
+    top: calc(22px + env(safe-area-inset-top, 0px));
+    left: calc(22px + env(safe-area-inset-left, 0px));
+    z-index: 500;
+  }
+  .auth-btn {
+    padding: 9px 18px; border-radius: 999px;
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    font-size: 12px; font-weight: 600; cursor: pointer;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    max-width: 42vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .auth-btn:hover { border-color: var(--gold); color: var(--gold-2); }
+  .auth-btn.logged-in { border-color: rgba(120,200,120,.4); color: #8fe08f; }
+
+  .auth-box { max-width: 360px; }
+  .auth-body { padding: 20px 22px; display: flex; flex-direction: column; gap: 12px; }
+  .auth-body .select-field { width: 100%; }
+  .auth-explainer { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+  .auth-error { color: var(--danger); font-size: 12.5px; }
+  .auth-submit {
+    padding: 11px 18px; border-radius: 10px; border: none; cursor: pointer;
+    background: linear-gradient(135deg, var(--gold), #d99a2b); color: #241a05;
+    font-size: 13px; font-weight: 700;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  }
+  .auth-submit:disabled { opacity: .6; cursor: not-allowed; }
+  .auth-switch { font-size: 12.5px; color: var(--muted); text-align: center; }
+  .auth-switch a { color: var(--gold-2); text-decoration: none; }
+  .auth-switch a:hover { text-decoration: underline; }
 
   .modal-overlay {
     position: fixed; inset: 0; background: rgba(0,0,0,.75);
@@ -336,9 +442,17 @@
     .result-meta, .result-genres { justify-content: center; }
     .result-link { align-self: center; }
     .result-actions { justify-content: center; }
+    .providers-row { justify-content: center; }
+    .side-block-title { text-align: center; }
   }
   .result-poster { width: 100%; border-radius: 12px; box-shadow: 0 12px 30px rgba(0,0,0,.5); display: block; background: #0c0c0c; }
-  .result-body { display: flex; flex-direction: column; }
+  /* min-width: 0 — без этого grid/flex-колонка с текстом по умолчанию не
+     ужимается уже своего "минимального содержимого" и может стать шире, чем
+     доступное место; а так как у .result-card overflow:hidden, лишнее просто
+     обрезалось точно по краю — из-за этого слова в конце строк и резались
+     пополам, вместо того чтобы переноситься на следующую строку. */
+  .result-body { display: flex; flex-direction: column; min-width: 0; }
+  .result-overview, .jw-attribution, .result-title { overflow-wrap: break-word; }
   .result-title { font-size: 22px; font-weight: 800; margin: 0 0 8px; line-height: 1.25; }
   .result-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; font-size: 13px; color: var(--muted); }
   .rating {
@@ -387,9 +501,30 @@
   .trailer-fallback-link:hover { color: var(--gold-2); text-decoration: underline; }
   .result-genres { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
   .genre-tag { font-size: 11px; padding: 4px 10px; border-radius: 999px; background: rgba(255,255,255,0.07); color: var(--muted); }
+  .country-tag { background: rgba(230,184,79,.1); border: 1px solid rgba(230,184,79,.3); color: var(--gold-2); font-weight: 700; }
   .result-overview { font-size: 14px; line-height: 1.6; color: #d6d9e2; margin: 0 0 14px; }
   .result-link { font-size: 12px; color: var(--gold-2); text-decoration: none; align-self: flex-start; }
   .result-link:hover { text-decoration: underline; }
+
+  .watch-providers, .similar-block { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .side-block-title { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0 0 10px; font-weight: 700; }
+  .providers-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .provider-chip {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 999px;
+    padding: 5px 10px 5px 5px; font-size: 12px; color: var(--text); text-decoration: none;
+  }
+  .provider-chip:hover { border-color: var(--gold); }
+  .provider-chip img { width: 22px; height: 22px; border-radius: 6px; object-fit: cover; display: block; }
+  .provider-chip .p-badge { font-size: 9px; padding: 2px 6px; border-radius: 999px; background: rgba(255,255,255,.08); color: var(--muted); text-transform: uppercase; }
+  .provider-chip.free .p-badge { background: rgba(120,200,120,.16); color: #8fe08f; }
+  .jw-attribution { margin-top: 8px; font-size: 10.5px; color: var(--muted); line-height: 1.5; }
+  .jw-attribution a { color: var(--muted); }
+  .similar-row { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
+  .similar-item { flex: 0 0 auto; width: 84px; cursor: pointer; }
+  .similar-item img { width: 100%; aspect-ratio: 2/3; object-fit: cover; border-radius: 8px; background: #0c0c0c; box-shadow: 0 4px 10px rgba(0,0,0,.4); transition: transform .15s ease; display: block; }
+  .similar-item:hover img { transform: scale(1.05); }
+  .similar-item .s-title { font-size: 10.5px; margin-top: 4px; line-height: 1.3; color: var(--muted); text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* ===================== Мобильная адаптация ===================== */
   @media (max-width: 640px) {
@@ -411,6 +546,14 @@
       padding: 7px 12px;
       font-size: 10.5px;
     }
+
+    .top-actions-left {
+      top: 12px;
+      left: 12px;
+      top: calc(12px + env(safe-area-inset-top, 0px));
+      left: calc(12px + env(safe-area-inset-left, 0px));
+    }
+    .auth-btn { padding: 7px 12px; font-size: 10.5px; max-width: 34vw; }
 
     .panel { padding: 16px; border-radius: 16px; }
     .filter-block { margin-top: 16px; }
@@ -454,9 +597,30 @@
 </style>
 </head>
 <body>
+<div class="top-actions-left">
+  <button class="auth-btn" id="authBtn" type="button">Войти</button>
+</div>
+
 <div class="top-actions">
   <button class="history-btn" id="historyBtn" type="button">История <span id="historyCount">(0)</span></button>
   <button class="favorites-btn" id="favoritesBtn" type="button">♥ Избранное <span id="favoritesCount">(0)</span></button>
+</div>
+
+<div class="modal-overlay hidden" id="authModal">
+  <div class="modal-box auth-box">
+    <div class="modal-header">
+      <h2 id="authTitle">Вход в аккаунт</h2>
+      <button id="authCloseBtn" type="button" title="Закрыть">×</button>
+    </div>
+    <div class="auth-body">
+      <p class="auth-explainer">Аккаунт нужен только для одного: чтобы История просмотров и Избранное сохранялись в облаке и подтягивались на любом вашем устройстве, а не оставались только в этом браузере.</p>
+      <input type="text" id="authLogin" class="select-field" placeholder="Логин" autocomplete="username">
+      <input type="password" id="authPassword" class="select-field" placeholder="Пароль" autocomplete="current-password">
+      <div class="auth-error hidden" id="authError"></div>
+      <button class="auth-submit" id="authSubmitBtn" type="button">Войти</button>
+      <div class="auth-switch"><span id="authSwitchText">Нет аккаунта?</span> <a href="#" id="authSwitchLink">Зарегистрироваться</a></div>
+    </div>
+  </div>
 </div>
 
 <div class="modal-overlay hidden" id="historyModal">
@@ -508,6 +672,13 @@
   <div class="layout">
     <div class="panel">
       <h2>Жанры</h2>
+      <div class="genre-mode-row">
+        <span class="filter-hint">Совпадение:</span>
+        <div class="mode-toggle" id="genreModeToggle">
+          <button type="button" class="mode-btn active" data-mode="or">любой из выбранных</button>
+          <button type="button" class="mode-btn" data-mode="and">все сразу в одном фильме</button>
+        </div>
+      </div>
       <div class="genre-pills" id="genrePills">
         <span style="color:var(--muted); font-size:13px;">Загрузка жанров…</span>
       </div>
@@ -543,6 +714,20 @@
         </div>
       </div>
 
+      <div class="filter-block">
+        <h2>Минимальный рейтинг</h2>
+        <input type="number" id="minRatingInput" class="select-field" placeholder="напр. 7" min="0" max="10" step="0.1" inputmode="decimal">
+      </div>
+
+      <div class="filter-block">
+        <h2>Длительность</h2>
+        <div class="year-range">
+          <input type="text" id="runtimeFrom" placeholder="от" autocomplete="off">
+          <span>—</span>
+          <input type="text" id="runtimeTo" placeholder="до" autocomplete="off">
+        </div>
+      </div>
+
       <div class="attribution">
         Данные, постеры и описания предоставлены <a href="https://www.themoviedb.org/" target="_blank" rel="noopener">TMDb</a>. Этот продукт использует API TMDb, но не одобрен и не сертифицирован TMDb.
       </div>
@@ -562,7 +747,7 @@
 
       <div class="result-card" id="resultCard">
         <div class="result-backdrop" id="resultBackdrop"></div>
-        <button class="watch-heart" id="watchHeartBtn" type="button" title="Буду смотреть" aria-label="Буду смотреть">
+        <button class="watch-heart" id="watchHeartBtn" type="button" title="Сохранить в «Буду смотреть» — список открывается кнопкой ♥ Избранное вверху страницы" aria-label="Буду смотреть">
           <svg viewBox="0 0 24 24"><path d="M12 20.6l-1.4-1.3C5.4 14.6 2 11.5 2 7.9 2 5 4.3 2.7 7.2 2.7c1.6 0 3.2.8 4.1 2 .9-1.2 2.5-2 4.1-2 2.9 0 5.2 2.3 5.2 5.2 0 3.6-3.4 6.7-8.6 11.4L12 20.6z"/></svg>
         </button>
         <div class="result-inner">
@@ -583,6 +768,15 @@
               <button class="trailer-btn" id="trailerBtn" type="button">▶ Смотреть трейлер</button>
               <a class="result-link kp-link" id="resKinopoiskLink" href="#" target="_blank" rel="noopener">Смотреть на Кинопоиске →</a>
               <a class="result-link" id="resLink" href="#" target="_blank" rel="noopener">Открыть страницу фильма на TMDb →</a>
+            </div>
+            <div class="watch-providers hidden" id="watchProvidersBlock">
+              <h4 class="side-block-title">Где посмотреть</h4>
+              <div class="providers-row" id="providersRow"></div>
+              <div class="jw-attribution">Данные о доступности — <a href="https://www.justwatch.com/" target="_blank" rel="noopener">JustWatch</a>. Показаны варианты по миру (для России у JustWatch пока нет данных).</div>
+            </div>
+            <div class="similar-block hidden" id="similarBlock">
+              <h4 class="side-block-title">Похожие</h4>
+              <div class="similar-row" id="similarRow"></div>
             </div>
           </div>
         </div>
@@ -658,6 +852,13 @@
   ];
   const MAX_COUNTRIES = 5;
 
+  // Русские названия по коду страны — используем как для плиток фильтра, так
+  // и для бейджа "страна-производитель" в карточке результата. Если код не
+  // попал в этот список (страна не входит в наши 23 фильтра), в бейдже
+  // просто используем название, которое прислал сам TMDb (обычно на английском).
+  const COUNTRY_NAME_BY_CODE = {};
+  COUNTRIES.forEach(c => { COUNTRY_NAME_BY_CODE[c.code] = c.name; });
+
   let mediaType = 'movie'; // 'movie' | 'tv'
   const ANIME_KEY = 'anime'; // синтетический "жанр" — реального такого id у TMDb нет
 
@@ -668,14 +869,28 @@
   // Если для текущего режима соответствия нет (movie/tv: null) — плитка
   // показывается, но недоступна для выбора в этом режиме.
   const GENRE_DEFS = [
-    { key: 'action_adventure', label: 'Боевик и приключения', movie: [28, 12], tv: [10759] },
+    // У фильмов TMDb различает Боевик (28) и Приключения (12) как отдельные
+    // жанры — разъединяем их на две плитки, это правда далёкие друг от друга
+    // жанры. А вот у сериалов у TMDb для них только ОДИН общий id (10759),
+    // отдельных "Боевик" и "Приключения" в официальном списке жанров сериалов
+    // просто не существует — поэтому для сериалов оставлена третья, отдельная
+    // комбинированная плитка (движок пометок недоступности сам скроет то,
+    // что не подходит текущему режиму).
+    { key: 'action',           label: 'Боевик',                movie: [28],      tv: null },
+    { key: 'adventure',        label: 'Приключения',           movie: [12],      tv: null },
+    { key: 'action_adventure', label: 'Боевик и приключения',  movie: null,      tv: [10759] },
     { key: 'animation',        label: 'Мультфильм',            movie: [16],     tv: [16] },
     { key: 'comedy',           label: 'Комедия',                movie: [35],     tv: [35] },
     { key: 'crime',            label: 'Криминал',               movie: [80],     tv: [80] },
     { key: 'documentary',      label: 'Документальный',         movie: [99],     tv: [99] },
     { key: 'drama',            label: 'Драма',                  movie: [18],     tv: [18] },
     { key: 'family',           label: 'Семейный',               movie: [10751],  tv: [10751] },
-    { key: 'scifi_fantasy',    label: 'Фантастика и фэнтези',   movie: [878, 14], tv: [10765] },
+    // Та же история, что с Боевик/Приключения: у фильмов Фантастика (878) и
+    // Фэнтези (14) — разные жанры TMDb, разъединяем. У сериалов снова только
+    // один общий id (10765), отдельных версий у TMDb для сериалов нет.
+    { key: 'scifi',            label: 'Фантастика',            movie: [878],     tv: null },
+    { key: 'fantasy',          label: 'Фэнтези',               movie: [14],      tv: null },
+    { key: 'scifi_fantasy',    label: 'Фантастика и фэнтези',  movie: null,      tv: [10765] },
     { key: 'mystery',          label: 'Детектив',                movie: [9648],   tv: [9648] },
     { key: 'western',          label: 'Вестерн',                 movie: [37],     tv: [37] },
     { key: 'war',              label: 'Военный',                 movie: [10752],  tv: [10768] },
@@ -683,6 +898,7 @@
     { key: 'horror',           label: 'Ужасы',                   movie: [27],     tv: null },
     { key: 'music',            label: 'Музыка',                  movie: [10402],  tv: null },
     { key: 'romance',          label: 'Мелодрама',                movie: [10749],  tv: null },
+    { key: 'thriller',         label: 'Триллер',                  movie: [53],     tv: null },
     { key: 'tv_movie',         label: 'Телевизионный фильм',     movie: [10770],  tv: null },
     { key: 'kids',             label: 'Детский',                  movie: null,     tv: [10762] },
     { key: 'news',             label: 'Новости',                  movie: null,     tv: [10763] },
@@ -714,6 +930,19 @@
   let selectedActor = null;          // { id, name }
   let spinning = false;
 
+  // 'or' — фильм хотя бы с одним из выбранных жанров (по умолчанию, широкий
+  // пул). 'and' — фильм должен иметь ВСЕ выбранные жанры сразу (например,
+  // История+Драма+Боевик+Детектив одновременно на одной карточке TMDb).
+  // TMDb официально поддерживает оба режима через with_genres: запятая = И,
+  // вертикальная черта = ИЛИ.
+  let genreMatchMode = 'or';
+  document.querySelectorAll('#genreModeToggle .mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      genreMatchMode = btn.dataset.mode;
+      document.querySelectorAll('#genreModeToggle .mode-btn').forEach(b => b.classList.toggle('active', b === btn));
+    });
+  });
+
   // --- История уже выпадавших фильмов (хранится в localStorage браузера) ---
   const HISTORY_KEY = 'movieRouletteHistory_v1';
 
@@ -726,6 +955,7 @@
   }
   function saveHistoryToStorage() {
     try { localStorage.setItem(HISTORY_KEY, JSON.stringify(watchHistory)); } catch (e) {}
+    syncToCloud();
   }
 
   let watchHistory = loadHistoryFromStorage();     // полные объекты фильмов, новые сверху
@@ -763,6 +993,7 @@
   }
   function saveWatchlistToStorage() {
     try { localStorage.setItem(WATCHLIST_KEY, JSON.stringify(watchlist)); } catch (e) {}
+    syncToCloud();
   }
 
   let watchlist = loadWatchlistFromStorage();
@@ -801,6 +1032,159 @@
     updateFavoritesCount();
     if (currentResultMovie && currentResultMovie.id === id) updateWatchHeart(currentResultMovie);
   }
+
+  // --- Аккаунты (необязательно): вход по логину/паролю через Firebase,
+  // чтобы История и Избранное подтягивались на любом устройстве. Без входа
+  // всё как раньше работает только через localStorage этого браузера.
+  const authBtn = document.getElementById('authBtn');
+  const authModal = document.getElementById('authModal');
+  const authLoginInput = document.getElementById('authLogin');
+  const authPasswordInput = document.getElementById('authPassword');
+  const authErrorEl = document.getElementById('authError');
+  const authSubmitBtn = document.getElementById('authSubmitBtn');
+  const authSwitchText = document.getElementById('authSwitchText');
+  const authSwitchLink = document.getElementById('authSwitchLink');
+  const authTitleEl = document.getElementById('authTitle');
+
+  let authMode = 'login'; // 'login' | 'register'
+  let currentUser = null;
+  let syncingFromCloud = false; // чтобы загрузка из облака не отправляла её же обратно
+
+  const AUTH_ERROR_MESSAGES = {
+    'auth/email-already-in-use': 'Такой логин уже занят.',
+    'auth/weak-password': 'Пароль должен быть не короче 6 символов.',
+    'auth/invalid-credential': 'Неверный логин или пароль.',
+    'auth/wrong-password': 'Неверный логин или пароль.',
+    'auth/user-not-found': 'Такого аккаунта не существует.',
+    'auth/too-many-requests': 'Слишком много попыток. Попробуйте позже.',
+    'auth/network-request-failed': 'Нет соединения с интернетом.'
+  };
+
+  function applyAuthMode() {
+    if (authMode === 'login') {
+      authTitleEl.textContent = 'Вход в аккаунт';
+      authSubmitBtn.textContent = 'Войти';
+      authSwitchText.textContent = 'Нет аккаунта?';
+      authSwitchLink.textContent = 'Зарегистрироваться';
+    } else {
+      authTitleEl.textContent = 'Регистрация';
+      authSubmitBtn.textContent = 'Зарегистрироваться';
+      authSwitchText.textContent = 'Уже есть аккаунт?';
+      authSwitchLink.textContent = 'Войти';
+    }
+  }
+  function authFail(message) {
+    authErrorEl.textContent = message;
+    authErrorEl.classList.remove('hidden');
+  }
+  function openAuthModal() {
+    authMode = 'login';
+    authErrorEl.classList.add('hidden');
+    authLoginInput.value = '';
+    authPasswordInput.value = '';
+    applyAuthMode();
+    authModal.classList.remove('hidden');
+    authLoginInput.focus();
+  }
+
+  authSwitchLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    authMode = authMode === 'login' ? 'register' : 'login';
+    authErrorEl.classList.add('hidden');
+    applyAuthMode();
+  });
+
+  authBtn.addEventListener('click', () => {
+    if (currentUser) {
+      if (confirm('Выйти из аккаунта «' + (currentUser.displayName || '') + '»?')) {
+        window.AppAuth.logout();
+      }
+    } else {
+      openAuthModal();
+    }
+  });
+
+  document.getElementById('authCloseBtn').addEventListener('click', () => authModal.classList.add('hidden'));
+  authModal.addEventListener('click', (e) => { if (e.target === authModal) authModal.classList.add('hidden'); });
+
+  authSubmitBtn.addEventListener('click', async () => {
+    const login = authLoginInput.value.trim();
+    const password = authPasswordInput.value;
+    authErrorEl.classList.add('hidden');
+
+    if (!/^[a-zA-Z0-9._-]{3,30}$/.test(login)) {
+      authFail('Логин: латинские буквы, цифры, точка, дефис — от 3 до 30 символов.');
+      return;
+    }
+    if (password.length < 6) {
+      authFail('Пароль должен быть не короче 6 символов.');
+      return;
+    }
+
+    authSubmitBtn.disabled = true;
+    try {
+      if (authMode === 'register') {
+        await window.AppAuth.register(login, password);
+      } else {
+        await window.AppAuth.login(login, password);
+      }
+      authModal.classList.add('hidden');
+    } catch (e) {
+      authFail(AUTH_ERROR_MESSAGES[e.code] || 'Что-то пошло не так. Попробуйте ещё раз.');
+    } finally {
+      authSubmitBtn.disabled = false;
+    }
+  });
+
+  // Отправляет текущие Историю и Избранное в облако — но только если человек
+  // вошёл и это не мы сами только что скачали их оттуда же (иначе зацикливание).
+  function syncToCloud() {
+    if (!currentUser || syncingFromCloud || !window.AppAuth) return;
+    window.AppAuth.saveCloudData(currentUser.uid, { history: watchHistory, watchlist: watchlist }).catch(() => {});
+  }
+
+  // window.AppAuth собирается в отдельном <script type="module"> в <head>, а
+  // модульные скрипты браузер откладывает до конца парсинга документа — то
+  // есть в момент, когда этот обычный <script> только начинает выполняться,
+  // window.AppAuth ещё может не существовать. Модули гарантированно успевают
+  // выполниться до события DOMContentLoaded, поэтому подписываемся на
+  // изменение состояния входа именно в этом обработчике, а не сразу.
+  document.addEventListener('DOMContentLoaded', () => {
+    if (!window.AppAuth) return;
+    window.AppAuth.onChange(async (user) => {
+      currentUser = user;
+      if (user) {
+        authBtn.textContent = user.displayName || 'Аккаунт';
+        authBtn.classList.add('logged-in');
+        try {
+          const cloud = await window.AppAuth.loadCloudData(user.uid);
+          syncingFromCloud = true;
+          if (cloud) {
+            // После входа облако — источник правды, локальные списки заменяются.
+            watchHistory = Array.isArray(cloud.history) ? cloud.history : [];
+            watchlist = Array.isArray(cloud.watchlist) ? cloud.watchlist : [];
+            seenIds = new Set(watchHistory.map(m => m.id));
+            watchlistIds = new Set(watchlist.map(m => m.id));
+            saveHistoryToStorage();
+            saveWatchlistToStorage();
+          } else {
+            // Первый вход этого аккаунта — поднимаем в облако то, что уже
+            // накопилось локально в этом браузере.
+            await window.AppAuth.saveCloudData(user.uid, { history: watchHistory, watchlist: watchlist });
+          }
+          syncingFromCloud = false;
+          updateHistoryCount();
+          updateFavoritesCount();
+          if (currentResultMovie) updateWatchHeart(currentResultMovie);
+        } catch (e) {
+          syncingFromCloud = false;
+        }
+      } else {
+        authBtn.textContent = 'Войти';
+        authBtn.classList.remove('logged-in');
+      }
+    });
+  });
 
   function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 
@@ -841,35 +1225,32 @@
     return res.json();
   }
 
-  function addPill(key, label, available) {
+  function addPill(key, label) {
     const pill = document.createElement('div');
-    pill.className = 'pill' + (available ? '' : ' pill-disabled');
+    pill.className = 'pill';
     pill.textContent = label;
     pill.dataset.key = key;
-    if (available) {
-      if (selectedGenres.has(key)) pill.classList.add('active');
-      pill.addEventListener('click', () => {
-        if (selectedGenres.has(key)) { selectedGenres.delete(key); pill.classList.remove('active'); }
-        else { selectedGenres.add(key); pill.classList.add('active'); }
-      });
-    } else {
-      pill.title = mediaType === 'tv' ? 'Недоступно для сериалов' : 'Недоступно для фильмов';
-    }
+    if (selectedGenres.has(key)) pill.classList.add('active');
+    pill.addEventListener('click', () => {
+      if (selectedGenres.has(key)) { selectedGenres.delete(key); pill.classList.remove('active'); }
+      else { selectedGenres.add(key); pill.classList.add('active'); }
+    });
     genrePillsEl.appendChild(pill);
   }
 
-  // Плитки жанров одинаковые в режимах "Фильмы" и "Сериалы" — те, для которых
-  // у TMDb нет соответствия в текущем режиме, просто показываются неактивными,
-  // а выбор при этом не сбрасывается, если переключиться обратно.
+  // Плитки жанров одинаковые в режимах "Фильмы" и "Сериалы", но те, для
+  // которых у TMDb нет соответствия в текущем режиме, просто не рисуются
+  // вообще (а не показываются серыми) — выбор при этом не сбрасывается,
+  // если переключиться обратно, он просто временно "спрятан".
   function renderGenrePills() {
     genrePillsEl.innerHTML = '';
     GENRE_DEFS.forEach(def => {
       const available = !!(mediaType === 'tv' ? def.tv : def.movie);
-      addPill(def.key, def.label, available);
+      if (available) addPill(def.key, def.label);
     });
     // Аниме — не настоящий жанр TMDb, а "Мультфильм" + Япония/Южная Корея.
     // Держим отдельным пунктом, чтобы не путать с обычными мультфильмами.
-    addPill(ANIME_KEY, 'Аниме', true);
+    addPill(ANIME_KEY, 'Аниме');
   }
 
   document.getElementById('selectAllBtn').addEventListener('click', () => {
@@ -987,6 +1368,14 @@
   function getFilters() {
     const yearFrom = document.getElementById('yearFrom').value.trim();
     const yearTo = document.getElementById('yearTo').value.trim();
+    // Поля длительности показывают дружелюбный формат ("1ч 40мин"), а не сырые
+    // минуты — реальное число минут для запроса к TMDb хранится отдельно, в
+    // data-minutes каждого поля (см. setupRuntimeInput ниже).
+    const runtimeFromMinutes = Number(document.getElementById('runtimeFrom').dataset.minutes || 0);
+    const runtimeToMinutes = Number(document.getElementById('runtimeTo').dataset.minutes || 0);
+    const runtimeFrom = runtimeFromMinutes > 0 ? String(runtimeFromMinutes) : '';
+    const runtimeTo = runtimeToMinutes > 0 ? String(runtimeToMinutes) : '';
+    const minRating = parseFloat(document.getElementById('minRatingInput').value) || 0;
     const allKeys = Array.from(selectedGenres);
     return {
       genreIds: resolveGenreIds(allKeys.filter(key => key !== ANIME_KEY)),
@@ -994,9 +1383,95 @@
       countries: Array.from(selectedCountries),
       actorId: selectedActor ? selectedActor.id : null,
       yearFrom: yearFrom,
-      yearTo: yearTo
+      yearTo: yearTo,
+      minRating: minRating,
+      runtimeFrom: runtimeFrom,
+      runtimeTo: runtimeTo
     };
   }
+
+  // Позволяет крутить колёсико мыши над сфокусированным числовым полем, чтобы
+  // менять значение на step, не трогая клавиатуру — так же удобно, как ползунок,
+  // но поле при этом остаётся обычным вводимым числом (можно и напечатать).
+  // preventDefault только пока поле в фокусе, чтобы не ломать обычный скролл
+  // страницы, когда курсор просто проходит над полем.
+  function enableWheelStep(input, step, min, max) {
+    input.addEventListener('wheel', (e) => {
+      if (document.activeElement !== input) return;
+      e.preventDefault();
+      const dir = e.deltaY < 0 ? 1 : -1;
+      let val = (parseFloat(input.value) || 0) + dir * step;
+      val = Math.round(val / step) * step;
+      if (min !== undefined) val = Math.max(min, val);
+      if (max !== undefined) val = Math.min(max, val);
+      input.value = Number(val.toFixed(2));
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }, { passive: false });
+  }
+
+  // Значение видно прямо в поле (например "9" значит "от 9") — отдельная
+  // подпись рядом с заголовком не нужна и только дублирует то же самое.
+  const minRatingInput = document.getElementById('minRatingInput');
+  enableWheelStep(minRatingInput, 0.1, 0, 10);
+
+  // Разбирает то, что человек напечатал руками, в минуты. Понимает и просто
+  // "100", и "1ч 40мин", и "1ч40м", и "1:40" — чтобы дружелюбный формат
+  // отображения не мешал печатать как удобно.
+  function parseRuntimeInput(text) {
+    if (!text) return 0;
+    text = text.trim().toLowerCase().replace(',', '.');
+    if (!text) return 0;
+    const colon = text.match(/^(\d+):(\d{1,2})$/);
+    if (colon) return parseInt(colon[1], 10) * 60 + parseInt(colon[2], 10);
+    let total = 0;
+    let matched = false;
+    const h = text.match(/(\d+(?:\.\d+)?)\s*ч/);
+    if (h) { total += parseFloat(h[1]) * 60; matched = true; }
+    const m = text.match(/(\d+)\s*м/);
+    if (m) { total += parseInt(m[1], 10); matched = true; }
+    if (matched) return Math.round(total);
+    const n = parseFloat(text);
+    return isNaN(n) ? 0 : Math.round(n);
+  }
+
+  function formatRuntimeDisplay(mins) {
+    if (!mins || mins <= 0) return '';
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    if (h === 0) return m + 'мин';
+    if (m === 0) return h + 'ч';
+    return h + 'ч ' + m + 'мин';
+  }
+
+  // Пока поле в фокусе — показываем сырое число минут, так проще печатать и
+  // крутить колёсиком. Как только ушли из поля (blur) — переформатируем в
+  // "1ч 40мин". Реальное значение в минутах всегда лежит в data-minutes.
+  function setupRuntimeInput(input, step) {
+    input.dataset.minutes = '0';
+    input.addEventListener('focus', () => {
+      const mins = Number(input.dataset.minutes) || 0;
+      input.value = mins > 0 ? String(mins) : '';
+    });
+    input.addEventListener('blur', () => {
+      const mins = parseRuntimeInput(input.value);
+      input.dataset.minutes = String(mins);
+      input.value = formatRuntimeDisplay(mins);
+    });
+    input.addEventListener('wheel', (e) => {
+      if (document.activeElement !== input) return;
+      e.preventDefault();
+      const dir = e.deltaY < 0 ? 1 : -1;
+      let mins = (Number(input.dataset.minutes) || 0) + dir * step;
+      mins = Math.max(0, Math.min(600, mins));
+      input.dataset.minutes = String(mins);
+      input.value = mins > 0 ? String(mins) : '';
+    }, { passive: false });
+  }
+
+  const runtimeFromInput = document.getElementById('runtimeFrom');
+  const runtimeToInput = document.getElementById('runtimeTo');
+  setupRuntimeInput(runtimeFromInput, 5);
+  setupRuntimeInput(runtimeToInput, 5);
 
   // "Спек" — набор параметров одного под-запроса. Обычно один (выбранные
   // жанры + страны), но если включено "Аниме" — добавляется второй спек
@@ -1019,12 +1494,18 @@
   async function fetchTvCreditsAsPage(spec, filters) {
     const data = await apiGet('/person/' + filters.actorId + '/tv_credits', {});
     let results = (data.cast || []).map(normalizeMediaItem);
-    results = results.filter(m => (m.genre_ids || []).some(g => spec.genreIds.includes(g)));
+    results = results.filter(m => genreMatchMode === 'and'
+      ? spec.genreIds.every(g => (m.genre_ids || []).includes(g))
+      : (m.genre_ids || []).some(g => spec.genreIds.includes(g)));
     if (spec.countries && spec.countries.length > 0) {
       results = results.filter(m => (m.origin_country || []).some(c => spec.countries.includes(c)));
     }
     if (filters.yearFrom) results = results.filter(m => m.release_date && m.release_date.slice(0, 4) >= filters.yearFrom);
     if (filters.yearTo) results = results.filter(m => m.release_date && m.release_date.slice(0, 4) <= filters.yearTo);
+    if (filters.minRating > 0) results = results.filter(m => (m.vote_average || 0) >= filters.minRating);
+    // У tv_credits в ответе нет длительности серии, поэтому фильтр по
+    // длительности для "сериал + актёр" применить, к сожалению, нельзя —
+    // это единственный принятый пробел в покрытии фильтров.
     return { results, total_pages: 1, total_results: results.length };
   }
 
@@ -1032,11 +1513,13 @@
     if (mediaType === 'tv' && filters.actorId) {
       return fetchTvCreditsAsPage(spec, filters);
     }
+    // Запятая у with_genres — официально документированное "И" у TMDb (фильм
+    // должен иметь все перечисленные жанры разом), вертикальная черта — "ИЛИ".
     const params = {
       sort_by: 'popularity.desc',
       include_adult: 'false',
       'vote_count.gte': '150',
-      with_genres: spec.genreIds.join('|'),
+      with_genres: spec.genreIds.join(genreMatchMode === 'and' ? ',' : '|'),
       page: String(page)
     };
     if (spec.countries && spec.countries.length > 0) params.with_origin_country = spec.countries.join('|');
@@ -1044,6 +1527,9 @@
     const dateField = mediaType === 'tv' ? 'first_air_date' : 'primary_release_date';
     if (filters.yearFrom) params[dateField + '.gte'] = filters.yearFrom + '-01-01';
     if (filters.yearTo) params[dateField + '.lte'] = filters.yearTo + '-12-31';
+    if (filters.minRating > 0) params['vote_average.gte'] = String(filters.minRating);
+    if (filters.runtimeFrom) params['with_runtime.gte'] = filters.runtimeFrom;
+    if (filters.runtimeTo) params['with_runtime.lte'] = filters.runtimeTo;
     const data = await apiGet('/discover/' + mediaType, params);
     data.results = (data.results || []).map(normalizeMediaItem);
     return data;
@@ -1206,6 +1692,118 @@
     reelTrack.addEventListener('transitionend', onEnd);
   }
 
+  // Растёт при каждом новом revealResult() — если пользователь успел
+  // переключиться на другой фильм/сериал до того, как асинхронный запрос
+  // "где посмотреть"/"похожие" вернулся, устаревший ответ просто игнорируется.
+  let resultRevealToken = 0;
+
+  // Почти бесплатная фича: TMDb отдаёт данные JustWatch по легальным местам
+  // просмотра, но для России там пусто (проверено эмпирически — нет ни
+  // одной записи "RU"). Поэтому берём регион с широким покрытием (США, затем
+  // Великобритания как запасной) и показываем "где это вообще легально
+  // доступно в мире", отдавая приоритет бесплатным/подписочным вариантам
+  // перед платными прокатом/покупкой. JustWatch требует обязательной
+  // атрибуции на каждой карточке — тут это ссылка у каждого провайдера
+  // плюс отдельная строка с логотипом-ссылкой под блоком.
+  async function loadWatchProviders(movie, token) {
+    const block = document.getElementById('watchProvidersBlock');
+    const row = document.getElementById('providersRow');
+    block.classList.add('hidden');
+    row.innerHTML = '';
+    const tmdbType = movie.media_type === 'tv' ? 'tv' : 'movie';
+    try {
+      const data = await apiGet('/' + tmdbType + '/' + movie.id + '/watch/providers', {});
+      if (token !== resultRevealToken) return;
+      const regions = data.results || {};
+      const region = regions.US || regions.GB || null;
+      if (!region) return;
+
+      const CAT_LABELS = { free: 'бесплатно', ads: 'бесплатно с рекламой', flatrate: 'подписка', rent: 'прокат', buy: 'покупка' };
+      const seen = new Map();
+      ['free', 'ads', 'flatrate', 'rent', 'buy'].forEach(cat => {
+        (region[cat] || []).forEach(p => {
+          if (!seen.has(p.provider_id)) seen.set(p.provider_id, Object.assign({}, p, { category: cat }));
+        });
+      });
+      const list = Array.from(seen.values()).slice(0, 6);
+      if (list.length === 0) return;
+
+      const link = region.link || 'https://www.justwatch.com/';
+      row.innerHTML = list.map(p => {
+        const isFreeish = p.category === 'free' || p.category === 'ads' || p.category === 'flatrate';
+        return '<a class="provider-chip' + (isFreeish ? ' free' : '') + '" href="' + link + '" target="_blank" rel="noopener">' +
+          '<img src="' + IMG_BASE + 'w45' + p.logo_path + '" alt="">' +
+          '<span>' + (p.provider_name || '').replace(/</g, '') + '</span>' +
+          '<span class="p-badge">' + (CAT_LABELS[p.category] || '') + '</span></a>';
+      }).join('');
+      block.classList.remove('hidden');
+    } catch (e) {
+      // Бонус-фича, не критична — при ошибке просто молча остаётся скрытой.
+    }
+  }
+
+  // Блок "Похожие" — клик по постеру ведёт себя как отдельный спин: карточка
+  // результата обновляется на выбранный тайтл и он тоже попадает в историю.
+  async function loadSimilar(movie, token) {
+    const block = document.getElementById('similarBlock');
+    const row = document.getElementById('similarRow');
+    block.classList.add('hidden');
+    row.innerHTML = '';
+    const tmdbType = movie.media_type === 'tv' ? 'tv' : 'movie';
+    try {
+      const data = await apiGet('/' + tmdbType + '/' + movie.id + '/recommendations', {});
+      if (token !== resultRevealToken) return;
+      const items = (data.results || []).filter(m => m.poster_path).slice(0, 10).map(normalizeMediaItem);
+      if (items.length === 0) return;
+
+      row.innerHTML = items.map((m, i) =>
+        '<div class="similar-item" data-idx="' + i + '"><img src="' + IMG_BASE + 'w185' + m.poster_path + '" alt=""><div class="s-title">' + (m.title || '').replace(/</g, '') + '</div></div>'
+      ).join('');
+      row.querySelectorAll('.similar-item').forEach((el, i) => {
+        el.addEventListener('click', () => {
+          revealResult(items[i]);
+          addToHistory(items[i]);
+          resultCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+      });
+      block.classList.remove('hidden');
+    } catch (e) {
+      // Бонус-фича, не критична — при ошибке просто молча остаётся скрытой.
+    }
+  }
+
+  // Добавляет бейдж(и) страны-производителя первыми в ряд с жанрами (а не
+  // затирает уже отрисованные жанры).
+  function renderCountryTags(codes) {
+    if (!codes || codes.length === 0) return;
+    const genresEl = document.getElementById('resGenres');
+    const html = codes.slice(0, 3).map(code =>
+      '<span class="genre-tag country-tag">' + (COUNTRY_NAME_BY_CODE[code] || code) + '</span>'
+    ).join('');
+    genresEl.insertAdjacentHTML('afterbegin', html);
+  }
+
+  // У discover/tv в ответе уже есть origin_country — для сериалов страна
+  // показывается сразу, без лишнего запроса. А вот discover/movie страну
+  // вообще не отдаёт (она есть только в полной карточке фильма), поэтому
+  // для фильмов страна дозагружается отдельным запросом /movie/{id}.
+  async function loadMovieCountry(movie, token) {
+    if (movie.media_type !== 'movie') return;
+    try {
+      const data = await apiGet('/movie/' + movie.id, {});
+      if (token !== resultRevealToken) return;
+      const countries = data.production_countries || [];
+      if (countries.length === 0) return;
+      const genresEl = document.getElementById('resGenres');
+      const html = countries.slice(0, 3).map(c =>
+        '<span class="genre-tag country-tag">' + (COUNTRY_NAME_BY_CODE[c.iso_3166_1] || c.name || c.iso_3166_1) + '</span>'
+      ).join('');
+      genresEl.insertAdjacentHTML('afterbegin', html);
+    } catch (e) {
+      // Бонус-инфо, не критична — при ошибке страна просто не покажется.
+    }
+  }
+
   function revealResult(movie) {
     currentResultMovie = movie;
     const backdrop = document.getElementById('resultBackdrop');
@@ -1229,8 +1827,14 @@
     genresEl.innerHTML = (movie.genre_ids || [])
       .map(id => GENRE_ID_LABELS[id] ? `<span class="genre-tag">${GENRE_ID_LABELS[id]}</span>` : '')
       .join('');
+    if (movie.media_type === 'tv') renderCountryTags(movie.origin_country);
 
     resultCard.classList.add('show');
+
+    const token = ++resultRevealToken;
+    loadWatchProviders(movie, token);
+    loadSimilar(movie, token);
+    loadMovieCountry(movie, token);
   }
 
   async function spin() {
@@ -1242,6 +1846,10 @@
     }
     if (filters.yearFrom && filters.yearTo && Number(filters.yearFrom) > Number(filters.yearTo)) {
       showError('Год «от» не может быть больше года «до».');
+      return;
+    }
+    if (filters.runtimeFrom && filters.runtimeTo && Number(filters.runtimeFrom) > Number(filters.runtimeTo)) {
+      showError('Длительность «от» не может быть больше «до».');
       return;
     }
 
