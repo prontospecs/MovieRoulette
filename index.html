@@ -114,6 +114,7 @@
   }
   h1 span { color: var(--gold); }
   .subtitle { color: var(--muted); font-size: 14px; }
+  .pool-count { color: var(--gold); font-size: 13px; margin: 8px 0 0; min-height: 18px; }
 
   .layout { display: grid; grid-template-columns: 280px 1fr; gap: 24px; }
   /* На компьютере "Страничка киномана" — не всплывающее окошко, а такая же
@@ -228,6 +229,16 @@
   .actor-result-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; font-size: 13px; }
   .actor-result-item:hover { background: rgba(255,255,255,0.06); }
   .actor-result-item img { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; background: #0c0c0c; flex-shrink: 0; }
+
+  .country-search-wrap { position: relative; margin-bottom: 8px; }
+  .country-results {
+    position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+    max-height: 220px; overflow-y: auto; z-index: 20;
+    box-shadow: 0 10px 24px rgba(0,0,0,.4);
+  }
+  .country-result-item { padding: 8px 10px; cursor: pointer; font-size: 13px; }
+  .country-result-item:hover { background: rgba(255,255,255,0.06); }
   .actor-chip {
     margin-top: 10px; display: flex; align-items: center; gap: 8px;
     background: var(--panel-2); border: 1px solid var(--gold); border-radius: 999px;
@@ -412,18 +423,19 @@
     transition: box-shadow .3s ease, transform .3s ease;
   }
   .reel-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .reel-tile.winner { box-shadow: 0 0 0 3px var(--gold), 0 10px 26px rgba(230,184,79,.35); transform: scale(1.02); }
+  /* Раньше у .winner/:hover ещё был transform: scale(...) — при переключении
+     победителя по клику два соседних тайла (старый и новый) одновременно
+     чуть увеличивались в размере, и поскольку между тайлами всего 8px
+     margin, увеличенные края накладывались друг на друга — выглядело как
+     "кривые"/наползающие друг на друга картинки. Оставляем только свечение
+     (box-shadow), оно не меняет реальный размер тайла и никогда не налезает
+     на соседа как фотография поверх фотографии. */
+  .reel-tile.winner { box-shadow: 0 0 0 3px var(--gold), 0 10px 26px rgba(230,184,79,.35); }
+  /* Соседние тайлы кликабельны — если рулетка выдала не то, что хотелось,
+     можно открыть карточку соседнего фильма/сериала вместо повторного спина. */
+  .reel-tile { cursor: pointer; }
+  .reel-tile:hover:not(.winner) { box-shadow: 0 0 0 2px rgba(230,184,79,.5), 0 10px 20px rgba(0,0,0,.5); }
 
-  .reel-frame {
-    position: absolute;
-    top: 6px; left: 50%;
-    transform: translateX(-50%);
-    width: 146px; height: 202px;
-    border: 2px solid var(--gold);
-    border-radius: 12px;
-    pointer-events: none;
-    box-shadow: 0 0 22px rgba(230,184,79,.25) inset;
-  }
   .reel-fade { position: absolute; top: 0; bottom: 0; width: 70px; pointer-events: none; z-index: 2; }
   .reel-fade.left { left: 0; background: linear-gradient(to right, #000000, transparent); }
   .reel-fade.right { right: 0; background: linear-gradient(to left, #000000, transparent); }
@@ -504,7 +516,15 @@
   }
   @media (max-width: 520px) {
     .result-inner { grid-template-columns: 1fr; }
+    /* На телефоне колонки постера и тела уже не стоят бок о бок, поэтому
+       "пустого места сбоку от постера" не бывает — незачем сжимать кнопку
+       отзывов и сами отзывы в узкие 190px постера. Ограничиваем шириной
+       только картинку постера (по центру), а кнопку/отзывы растягиваем на
+       всю ширину карточки, как остальной контент. */
+    .result-poster-col { width: 100%; align-items: center; }
     .result-poster { max-width: 190px; margin: 0 auto; }
+    .reviews-btn { max-width: 280px; }
+    .reviews-box { max-width: 420px; width: 100%; }
     .result-title, .result-meta, .result-genres, .result-overview, .result-link { text-align: center; }
     .result-meta, .result-genres { justify-content: center; }
     .result-link { align-self: center; }
@@ -513,6 +533,27 @@
     .side-block-title { text-align: center; }
   }
   .result-poster { width: 100%; border-radius: 12px; box-shadow: 0 12px 30px rgba(0,0,0,.5); display: block; background: #0c0c0c; }
+  /* Колонка постера растягивается на всю высоту строки грида (её сосед,
+     result-body, обычно выше картинки постера) — раньше это место под
+     постером просто пустовало, теперь там кнопка "Отзывы" и сами отзывы. */
+  .result-poster-col { display: flex; flex-direction: column; gap: 10px; }
+  .reviews-btn {
+    width: 100%; padding: 10px 8px; border-radius: 10px;
+    border: 1px solid var(--border); background: rgba(255,255,255,.06);
+    color: var(--text); font-size: 13px; font-weight: 600; cursor: pointer;
+    transition: background .15s ease, border-color .15s ease;
+  }
+  .reviews-btn:hover:not(:disabled) { background: rgba(255,255,255,.12); border-color: var(--gold); }
+  .reviews-btn:disabled { opacity: .55; cursor: not-allowed; }
+  .reviews-box { display: flex; flex-direction: column; gap: 10px; }
+  .review-item {
+    background: rgba(255,255,255,.05); border: 1px solid var(--border);
+    border-radius: 10px; padding: 8px 10px; font-size: 12px; line-height: 1.45;
+  }
+  .review-author { display: flex; align-items: center; gap: 6px; color: var(--gold); font-weight: 600; margin-bottom: 4px; }
+  .review-rating { color: var(--muted); font-weight: 400; }
+  .review-text { color: var(--muted); overflow-wrap: break-word; white-space: pre-wrap; }
+  .review-empty { color: var(--muted); font-size: 12px; padding: 4px 2px; }
   /* min-width: 0 — без этого grid/flex-колонка с текстом по умолчанию не
      ужимается уже своего "минимального содержимого" и может стать шире, чем
      доступное место; а так как у .result-card overflow:hidden, лишнее просто
@@ -638,7 +679,6 @@
 
     .reel-viewport { height: 190px; border-radius: 14px; }
     .reel-track { height: 168px; }
-    .reel-frame { height: 180px; }
     .reel-tile { height: 168px; }
 
     .spin-btn { width: 100%; padding: 15px 20px; font-size: 15px; }
@@ -759,6 +799,7 @@
     </div>
     <h1>Рулетка <span>фильмов и сериалов</span></h1>
     <p class="subtitle" id="subtitleText">Выберите жанры и крутите — фильм выбирается случайно из базы TMDb (сотни тысяч фильмов)</p>
+    <p class="pool-count" id="poolCountText"></p>
   </header>
 
   <div class="layout">
@@ -781,6 +822,10 @@
 
       <div class="filter-block">
         <h2>Страна производства <span class="filter-hint">(можно до 5)</span></h2>
+        <div class="country-search-wrap">
+          <input type="text" id="countrySearchInput" class="select-field" placeholder="Найти любую страну (Казахстан, Индия…)" autocomplete="off">
+          <div class="country-results hidden" id="countryResults"></div>
+        </div>
         <div class="genre-pills" id="countryPills"></div>
       </div>
 
@@ -829,7 +874,6 @@
       <div class="reel-viewport" id="reelViewport">
         <div class="placeholder" id="reelPlaceholder">Нажмите «Крутить рулетку», чтобы выбрать фильм</div>
         <div class="reel-track" id="reelTrack"></div>
-        <div class="reel-frame"></div>
         <div class="reel-fade left"></div>
         <div class="reel-fade right"></div>
       </div>
@@ -843,7 +887,11 @@
           <svg viewBox="0 0 24 24"><path d="M12 20.6l-1.4-1.3C5.4 14.6 2 11.5 2 7.9 2 5 4.3 2.7 7.2 2.7c1.6 0 3.2.8 4.1 2 .9-1.2 2.5-2 4.1-2 2.9 0 5.2 2.3 5.2 5.2 0 3.6-3.4 6.7-8.6 11.4L12 20.6z"/></svg>
         </button>
         <div class="result-inner">
-          <img class="result-poster" id="resPoster" src="" alt="">
+          <div class="result-poster-col">
+            <img class="result-poster" id="resPoster" src="" alt="">
+            <button class="reviews-btn" id="reviewsBtn" type="button" title="Случайные отзывы зрителей с TMDb (в основном на английском — своего перевода у отзывов нет)">💬 Отзывы</button>
+            <div class="reviews-box hidden" id="reviewsBox"></div>
+          </div>
           <div class="result-body">
             <h3 class="result-title" id="resTitle">Название</h3>
             <div class="result-meta">
@@ -858,6 +906,7 @@
             <p class="result-overview" id="resOverview"></p>
             <div class="result-actions">
               <button class="trailer-btn" id="trailerBtn" type="button">▶ Смотреть трейлер</button>
+              <button class="trailer-btn hidden" id="fullMovieBtn" type="button" title="Ищет фильм целиком на YouTube по названию и сверяет длительность видео с длительностью фильма из TMDb, чтобы не подсунуть нарезку или реакцию">🔍 Найти фильм на YouTube</button>
               <button class="watched-btn" id="markWatchedBtn" type="button" title="Отметить, что вы уже смотрели этот фильм раньше — даже если рулетка сама его вам не показывала">👁 Уже смотрел(а)</button>
               <a class="result-link kp-link" id="resKinopoiskLink" href="#" target="_blank" rel="noopener">Смотреть на Кинопоиске →</a>
               <a class="result-link" id="resLink" href="#" target="_blank" rel="noopener">Открыть страницу фильма на TMDb →</a>
@@ -893,6 +942,14 @@
   const API_KEY = 'baf011ef0382f9cc04a0f69ec8ec82c5';
   const API_BASE = 'https://api.themoviedb.org/3';
   const IMG_BASE = 'https://image.tmdb.org/t/p/';
+  // Отдельный ключ YouTube Data API v3 (не TMDb!) — нужен только для поиска
+  // полнометражки на YouTube по кнопке "Найти фильм на YouTube". У TMDb в
+  // принципе нет поля "фильм целиком" (там хранятся только официальные
+  // трейлеры/клипы), поэтому для этой функции требуется отдельный поиск.
+  // Квота YouTube API даётся дневная и трата на поиск большая (100 юнитов на
+  // один search-запрос из ~10000 в сутки), поэтому поиск запускается только
+  // по клику пользователя, а не автоматически на каждый спин.
+  const YOUTUBE_API_KEY = 'AIzaSyCsPlELeoEHYVj_k2Id4aJq61jK2Rwux1c';
 
   // У TMDb нет отдельного жанра "Аниме" — японская и корейская анимация
   // помечены тем же жанром "Мультфильм" (id 16), что и обычные западные
@@ -953,12 +1010,274 @@
   ];
   const MAX_COUNTRIES = 5;
 
+  // Полный список стран ISO 3166-1 (все коды, которые отдаёт TMDb в
+  // /configuration/countries, проверено live через API) — 23 кнопки выше это
+  // только самые популярные варианты "в один клик", а полный список
+  // открывается через поле поиска рядом с ними и покрывает вообще любую
+  // страну, включая те, где кино снимается активно, но не входит в куцую
+  // популярную двадцатку (Казахстан, Индия и т.д.), а также исторические
+  // коды (СССР, Югославия, ГДР), которые реально встречаются как
+  // origin_country у старых фильмов.
+  const ALL_COUNTRIES = [
+    { code: 'AD', name: 'Андорра' },
+    { code: 'AE', name: 'ОАЭ' },
+    { code: 'AF', name: 'Афганистан' },
+    { code: 'AG', name: 'Антигуа и Барбуда' },
+    { code: 'AI', name: 'Ангилья' },
+    { code: 'AL', name: 'Албания' },
+    { code: 'AM', name: 'Армения' },
+    { code: 'AN', name: 'Нидерландские Антильские острова' },
+    { code: 'AO', name: 'Ангола' },
+    { code: 'AQ', name: 'Антарктида' },
+    { code: 'AR', name: 'Аргентина' },
+    { code: 'AS', name: 'Американское Самоа' },
+    { code: 'AT', name: 'Австрия' },
+    { code: 'AU', name: 'Австралия' },
+    { code: 'AW', name: 'Аруба' },
+    { code: 'AZ', name: 'Азербайджан' },
+    { code: 'BA', name: 'Босния и Герцеговина' },
+    { code: 'BB', name: 'Барбадос' },
+    { code: 'BD', name: 'Бангладеш' },
+    { code: 'BE', name: 'Бельгия' },
+    { code: 'BF', name: 'Буркина-Фасо' },
+    { code: 'BG', name: 'Болгария' },
+    { code: 'BH', name: 'Бахрейн' },
+    { code: 'BI', name: 'Бурунди' },
+    { code: 'BJ', name: 'Бенин' },
+    { code: 'BM', name: 'Бермуды' },
+    { code: 'BN', name: 'Бруней' },
+    { code: 'BO', name: 'Боливия' },
+    { code: 'BR', name: 'Бразилия' },
+    { code: 'BS', name: 'Багамы' },
+    { code: 'BT', name: 'Бутан' },
+    { code: 'BU', name: 'Бирма (старый код)' },
+    { code: 'BV', name: 'остров Буве' },
+    { code: 'BW', name: 'Ботсвана' },
+    { code: 'BY', name: 'Беларусь' },
+    { code: 'BZ', name: 'Белиз' },
+    { code: 'CA', name: 'Канада' },
+    { code: 'CC', name: 'Кокосовые острова' },
+    { code: 'CD', name: 'ДР Конго' },
+    { code: 'CF', name: 'Центральноафриканская Республика' },
+    { code: 'CG', name: 'Республика Конго' },
+    { code: 'CH', name: 'Швейцария' },
+    { code: 'CI', name: 'Кот-д\'Ивуар' },
+    { code: 'CK', name: 'Острова Кука' },
+    { code: 'CL', name: 'Чили' },
+    { code: 'CM', name: 'Камерун' },
+    { code: 'CN', name: 'Китай' },
+    { code: 'CO', name: 'Колумбия' },
+    { code: 'CR', name: 'Коста-Рика' },
+    { code: 'CS', name: 'Сербия и Черногория' },
+    { code: 'CU', name: 'Куба' },
+    { code: 'CV', name: 'Кабо-Верде' },
+    { code: 'CX', name: 'остров Рождества' },
+    { code: 'CY', name: 'Кипр' },
+    { code: 'CZ', name: 'Чехия' },
+    { code: 'DE', name: 'Германия' },
+    { code: 'DJ', name: 'Джибути' },
+    { code: 'DK', name: 'Дания' },
+    { code: 'DM', name: 'Доминика' },
+    { code: 'DO', name: 'Доминиканская Республика' },
+    { code: 'DZ', name: 'Алжир' },
+    { code: 'EC', name: 'Эквадор' },
+    { code: 'EE', name: 'Эстония' },
+    { code: 'EG', name: 'Египет' },
+    { code: 'EH', name: 'Западная Сахара' },
+    { code: 'ER', name: 'Эритрея' },
+    { code: 'ES', name: 'Испания' },
+    { code: 'ET', name: 'Эфиопия' },
+    { code: 'FI', name: 'Финляндия' },
+    { code: 'FJ', name: 'Фиджи' },
+    { code: 'FK', name: 'Фолклендские острова' },
+    { code: 'FM', name: 'Микронезия' },
+    { code: 'FO', name: 'Фарерские острова' },
+    { code: 'FR', name: 'Франция' },
+    { code: 'GA', name: 'Габон' },
+    { code: 'GB', name: 'Великобритания' },
+    { code: 'GD', name: 'Гренада' },
+    { code: 'GE', name: 'Грузия' },
+    { code: 'GF', name: 'Французская Гвиана' },
+    { code: 'GH', name: 'Гана' },
+    { code: 'GI', name: 'Гибралтар' },
+    { code: 'GL', name: 'Гренландия' },
+    { code: 'GM', name: 'Гамбия' },
+    { code: 'GN', name: 'Гвинея' },
+    { code: 'GP', name: 'Гваделупа' },
+    { code: 'GQ', name: 'Экваториальная Гвинея' },
+    { code: 'GR', name: 'Греция' },
+    { code: 'GS', name: 'Южная Георгия и Южные Сандвичевы острова' },
+    { code: 'GT', name: 'Гватемала' },
+    { code: 'GU', name: 'Гуам' },
+    { code: 'GW', name: 'Гвинея-Бисау' },
+    { code: 'GY', name: 'Гайана' },
+    { code: 'HK', name: 'Гонконг' },
+    { code: 'HM', name: 'острова Херд и Макдональд' },
+    { code: 'HN', name: 'Гондурас' },
+    { code: 'HR', name: 'Хорватия' },
+    { code: 'HT', name: 'Гаити' },
+    { code: 'HU', name: 'Венгрия' },
+    { code: 'ID', name: 'Индонезия' },
+    { code: 'IE', name: 'Ирландия' },
+    { code: 'IL', name: 'Израиль' },
+    { code: 'IN', name: 'Индия' },
+    { code: 'IO', name: 'Британская территория в Индийском океане' },
+    { code: 'IQ', name: 'Ирак' },
+    { code: 'IR', name: 'Иран' },
+    { code: 'IS', name: 'Исландия' },
+    { code: 'IT', name: 'Италия' },
+    { code: 'JM', name: 'Ямайка' },
+    { code: 'JO', name: 'Иордания' },
+    { code: 'JP', name: 'Япония' },
+    { code: 'KE', name: 'Кения' },
+    { code: 'KG', name: 'Киргизия' },
+    { code: 'KH', name: 'Камбоджа' },
+    { code: 'KI', name: 'Кирибати' },
+    { code: 'KM', name: 'Коморы' },
+    { code: 'KN', name: 'Сент-Китс и Невис' },
+    { code: 'KP', name: 'Северная Корея' },
+    { code: 'KR', name: 'Южная Корея' },
+    { code: 'KW', name: 'Кувейт' },
+    { code: 'KY', name: 'Каймановы острова' },
+    { code: 'KZ', name: 'Казахстан' },
+    { code: 'LA', name: 'Лаос' },
+    { code: 'LB', name: 'Ливан' },
+    { code: 'LC', name: 'Сент-Люсия' },
+    { code: 'LI', name: 'Лихтенштейн' },
+    { code: 'LK', name: 'Шри-Ланка' },
+    { code: 'LR', name: 'Либерия' },
+    { code: 'LS', name: 'Лесото' },
+    { code: 'LT', name: 'Литва' },
+    { code: 'LU', name: 'Люксембург' },
+    { code: 'LV', name: 'Латвия' },
+    { code: 'LY', name: 'Ливия' },
+    { code: 'MA', name: 'Марокко' },
+    { code: 'MC', name: 'Монако' },
+    { code: 'MD', name: 'Молдова' },
+    { code: 'ME', name: 'Черногория' },
+    { code: 'MG', name: 'Мадагаскар' },
+    { code: 'MH', name: 'Маршалловы острова' },
+    { code: 'MK', name: 'Северная Македония' },
+    { code: 'ML', name: 'Мали' },
+    { code: 'MM', name: 'Мьянма' },
+    { code: 'MN', name: 'Монголия' },
+    { code: 'MO', name: 'Макао' },
+    { code: 'MP', name: 'Северные Марианские острова' },
+    { code: 'MQ', name: 'Мартиника' },
+    { code: 'MR', name: 'Мавритания' },
+    { code: 'MS', name: 'Монтсеррат' },
+    { code: 'MT', name: 'Мальта' },
+    { code: 'MU', name: 'Маврикий' },
+    { code: 'MV', name: 'Мальдивы' },
+    { code: 'MW', name: 'Малави' },
+    { code: 'MX', name: 'Мексика' },
+    { code: 'MY', name: 'Малайзия' },
+    { code: 'MZ', name: 'Мозамбик' },
+    { code: 'NA', name: 'Намибия' },
+    { code: 'NC', name: 'Новая Каледония' },
+    { code: 'NE', name: 'Нигер' },
+    { code: 'NF', name: 'остров Норфолк' },
+    { code: 'NG', name: 'Нигерия' },
+    { code: 'NI', name: 'Никарагуа' },
+    { code: 'NL', name: 'Нидерланды' },
+    { code: 'NO', name: 'Норвегия' },
+    { code: 'NP', name: 'Непал' },
+    { code: 'NR', name: 'Науру' },
+    { code: 'NU', name: 'Ниуэ' },
+    { code: 'NZ', name: 'Новая Зеландия' },
+    { code: 'OM', name: 'Оман' },
+    { code: 'PA', name: 'Панама' },
+    { code: 'PE', name: 'Перу' },
+    { code: 'PF', name: 'Французская Полинезия' },
+    { code: 'PG', name: 'Папуа — Новая Гвинея' },
+    { code: 'PH', name: 'Филиппины' },
+    { code: 'PK', name: 'Пакистан' },
+    { code: 'PL', name: 'Польша' },
+    { code: 'PM', name: 'Сен-Пьер и Микелон' },
+    { code: 'PN', name: 'Питкэрн' },
+    { code: 'PR', name: 'Пуэрто-Рико' },
+    { code: 'PS', name: 'Палестина' },
+    { code: 'PT', name: 'Португалия' },
+    { code: 'PW', name: 'Палау' },
+    { code: 'PY', name: 'Парагвай' },
+    { code: 'QA', name: 'Катар' },
+    { code: 'RE', name: 'Реюньон' },
+    { code: 'RO', name: 'Румыния' },
+    { code: 'RS', name: 'Сербия' },
+    { code: 'RU', name: 'Россия' },
+    { code: 'RW', name: 'Руанда' },
+    { code: 'SA', name: 'Саудовская Аравия' },
+    { code: 'SB', name: 'Соломоновы острова' },
+    { code: 'SC', name: 'Сейшелы' },
+    { code: 'SD', name: 'Судан' },
+    { code: 'SE', name: 'Швеция' },
+    { code: 'SG', name: 'Сингапур' },
+    { code: 'SH', name: 'остров Святой Елены' },
+    { code: 'SI', name: 'Словения' },
+    { code: 'SJ', name: 'Шпицберген и Ян-Майен' },
+    { code: 'SK', name: 'Словакия' },
+    { code: 'SL', name: 'Сьерра-Леоне' },
+    { code: 'SM', name: 'Сан-Марино' },
+    { code: 'SN', name: 'Сенегал' },
+    { code: 'SO', name: 'Сомали' },
+    { code: 'SR', name: 'Суринам' },
+    { code: 'SS', name: 'Южный Судан' },
+    { code: 'ST', name: 'Сан-Томе и Принсипи' },
+    { code: 'SU', name: 'СССР' },
+    { code: 'SV', name: 'Сальвадор' },
+    { code: 'SY', name: 'Сирия' },
+    { code: 'SZ', name: 'Эсватини (Свазиленд)' },
+    { code: 'TC', name: 'Тёркс и Кайкос' },
+    { code: 'TD', name: 'Чад' },
+    { code: 'TF', name: 'Французские Южные территории' },
+    { code: 'TG', name: 'Того' },
+    { code: 'TH', name: 'Таиланд' },
+    { code: 'TJ', name: 'Таджикистан' },
+    { code: 'TK', name: 'Токелау' },
+    { code: 'TL', name: 'Восточный Тимор' },
+    { code: 'TM', name: 'Туркменистан' },
+    { code: 'TN', name: 'Тунис' },
+    { code: 'TO', name: 'Тонга' },
+    { code: 'TP', name: 'Восточный Тимор (старый код)' },
+    { code: 'TR', name: 'Турция' },
+    { code: 'TT', name: 'Тринидад и Тобаго' },
+    { code: 'TV', name: 'Тувалу' },
+    { code: 'TW', name: 'Тайвань' },
+    { code: 'TZ', name: 'Танзания' },
+    { code: 'UA', name: 'Украина' },
+    { code: 'UG', name: 'Уганда' },
+    { code: 'UM', name: 'Внешние малые острова США' },
+    { code: 'US', name: 'США' },
+    { code: 'UY', name: 'Уругвай' },
+    { code: 'UZ', name: 'Узбекистан' },
+    { code: 'VA', name: 'Ватикан' },
+    { code: 'VC', name: 'Сент-Винсент и Гренадины' },
+    { code: 'VE', name: 'Венесуэла' },
+    { code: 'VG', name: 'Британские Виргинские острова' },
+    { code: 'VI', name: 'Виргинские острова США' },
+    { code: 'VN', name: 'Вьетнам' },
+    { code: 'VU', name: 'Вануату' },
+    { code: 'WF', name: 'Уоллис и Футуна' },
+    { code: 'WS', name: 'Самоа' },
+    { code: 'XC', name: 'Чехословакия' },
+    { code: 'XG', name: 'ГДР' },
+    { code: 'XI', name: 'Северная Ирландия' },
+    { code: 'XK', name: 'Косово' },
+    { code: 'YE', name: 'Йемен' },
+    { code: 'YT', name: 'Майотта' },
+    { code: 'YU', name: 'Югославия' },
+    { code: 'ZA', name: 'ЮАР' },
+    { code: 'ZM', name: 'Замбия' },
+    { code: 'ZR', name: 'Заир' },
+    { code: 'ZW', name: 'Зимбабве' }
+  ];
+
   // Русские названия по коду страны — используем как для плиток фильтра, так
-  // и для бейджа "страна-производитель" в карточке результата. Если код не
-  // попал в этот список (страна не входит в наши 23 фильтра), в бейдже
-  // просто используем название, которое прислал сам TMDb (обычно на английском).
+  // и для бейджа "страна-производитель" в карточке результата. Строим из
+  // ALL_COUNTRIES (полный список), а не только из 23 быстрых кнопок — так
+  // редкие страны тоже получают русское название, а не код TMDb "как есть".
   const COUNTRY_NAME_BY_CODE = {};
-  COUNTRIES.forEach(c => { COUNTRY_NAME_BY_CODE[c.code] = c.name; });
+  ALL_COUNTRIES.forEach(c => { COUNTRY_NAME_BY_CODE[c.code] = c.name; });
 
   let mediaType = 'movie'; // 'movie' | 'tv'
   const ANIME_KEY = 'anime'; // синтетический "жанр" — реального такого id у TMDb нет
@@ -1041,6 +1360,7 @@
     btn.addEventListener('click', () => {
       genreMatchMode = btn.dataset.mode;
       document.querySelectorAll('#genreModeToggle .mode-btn').forEach(b => b.classList.toggle('active', b === btn));
+      schedulePoolCountUpdate();
     });
   });
 
@@ -1423,6 +1743,7 @@
     pill.addEventListener('click', () => {
       if (selectedGenres.has(key)) { selectedGenres.delete(key); pill.classList.remove('active'); }
       else { selectedGenres.add(key); pill.classList.add('active'); }
+      schedulePoolCountUpdate();
     });
     genrePillsEl.appendChild(pill);
   }
@@ -1449,14 +1770,21 @@
   document.getElementById('selectAllBtn').addEventListener('click', () => {
     selectedGenres = new Set(GENRE_DEFS.map(def => def.key));
     renderGenrePills();
+    schedulePoolCountUpdate();
   });
   document.getElementById('selectNoneBtn').addEventListener('click', () => {
     selectedGenres.clear();
     renderGenrePills();
+    schedulePoolCountUpdate();
   });
 
   // --- Страна производства (мультивыбор, максимум MAX_COUNTRIES штук) ---
   const countryPillsEl = document.getElementById('countryPills');
+  // Страны, добавленные через поле поиска ниже, а не через одну из 23
+  // "быстрых" кнопок — рендерятся дополнительными плитками рядом с базовыми,
+  // чтобы Казахстан/Индия и любая другая страна из ALL_COUNTRIES тоже была
+  // видна и снималась одним кликом, как и обычные кнопки.
+  const extraCountryCodes = new Set();
   function renderCountryPills() {
     countryPillsEl.innerHTML = '';
     COUNTRIES.forEach(c => {
@@ -1477,11 +1805,80 @@
           selectedCountries.add(c.code);
           pill.classList.add('active');
         }
+        schedulePoolCountUpdate();
+      });
+      countryPillsEl.appendChild(pill);
+    });
+    extraCountryCodes.forEach(code => {
+      const pill = document.createElement('div');
+      pill.className = 'pill active';
+      pill.textContent = (COUNTRY_NAME_BY_CODE[code] || code) + ' ×';
+      pill.dataset.code = code;
+      pill.title = 'Нажмите, чтобы убрать';
+      pill.addEventListener('click', () => {
+        selectedCountries.delete(code);
+        extraCountryCodes.delete(code);
+        renderCountryPills();
+        schedulePoolCountUpdate();
       });
       countryPillsEl.appendChild(pill);
     });
   }
   renderCountryPills();
+
+  // --- Поиск любой страны (не только 23 быстрых кнопки выше) ---
+  const countrySearchInput = document.getElementById('countrySearchInput');
+  const countryResultsEl = document.getElementById('countryResults');
+
+  function addCountryFromSearch(code) {
+    if (selectedCountries.has(code)) return;
+    if (selectedCountries.size >= MAX_COUNTRIES) {
+      showError('Можно выбрать не более ' + MAX_COUNTRIES + ' стран одновременно.');
+      setTimeout(hideError, 2500);
+      return;
+    }
+    selectedCountries.add(code);
+    // Если страна не входит в базовые 23 кнопки, запоминаем её как "лишнюю",
+    // чтобы renderCountryPills нарисовал для неё отдельную плитку.
+    if (!COUNTRIES.some(c => c.code === code)) extraCountryCodes.add(code);
+    renderCountryPills();
+    schedulePoolCountUpdate();
+    countrySearchInput.value = '';
+    countryResultsEl.classList.add('hidden');
+    countryResultsEl.innerHTML = '';
+  }
+
+  countrySearchInput.addEventListener('input', () => {
+    const query = countrySearchInput.value.trim().toLowerCase();
+    if (query.length < 2) {
+      countryResultsEl.classList.add('hidden');
+      countryResultsEl.innerHTML = '';
+      return;
+    }
+    const matches = ALL_COUNTRIES
+      .filter(c => c.name.toLowerCase().includes(query) || c.code.toLowerCase() === query)
+      .slice(0, 8);
+    countryResultsEl.innerHTML = '';
+    if (matches.length === 0) {
+      countryResultsEl.innerHTML = '<div class="country-result-item" style="cursor:default; color:var(--muted);">Никого не нашлось</div>';
+      countryResultsEl.classList.remove('hidden');
+      return;
+    }
+    matches.forEach(c => {
+      const item = document.createElement('div');
+      item.className = 'country-result-item';
+      item.textContent = c.name + (selectedCountries.has(c.code) ? ' (уже выбрано)' : '');
+      item.addEventListener('click', () => addCountryFromSearch(c.code));
+      countryResultsEl.appendChild(item);
+    });
+    countryResultsEl.classList.remove('hidden');
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.country-search-wrap')) {
+      countryResultsEl.classList.add('hidden');
+    }
+  });
 
   // --- Поиск и выбор актёра ---
   const actorInput = document.getElementById('actorInput');
@@ -1497,11 +1894,13 @@
     actorInput.value = '';
     actorResultsEl.classList.add('hidden');
     actorResultsEl.innerHTML = '';
+    schedulePoolCountUpdate();
   }
 
   function clearActor() {
     selectedActor = null;
     actorChip.classList.add('hidden');
+    schedulePoolCountUpdate();
   }
 
   document.getElementById('actorChipRemove').addEventListener('click', clearActor);
@@ -1582,6 +1981,43 @@
     };
   }
 
+  // Показывает над рулеткой, сколько фильмов/сериалов подходит под ВСЕ
+  // настроенные сейчас фильтры сразу (жанры, страны, актёр, год, рейтинг,
+  // длительность) — то есть ровно то же самое, что реально ищет сама рулетка
+  // при спине (getFilters()). Пересчитывается с небольшой задержкой после
+  // любого изменения фильтра, чтобы не слать запрос на каждый чих подряд.
+  const poolCountEl = document.getElementById('poolCountText');
+  let poolCountToken = 0;
+  let poolCountTimer = null;
+
+  async function refreshPoolCount() {
+    const myToken = ++poolCountToken;
+    const filters = getFilters();
+    const specs = buildQuerySpecs(filters);
+    if (specs.length === 0) {
+      poolCountEl.textContent = 'Выберите хотя бы один жанр, чтобы узнать, сколько подходит';
+      return;
+    }
+    poolCountEl.textContent = 'Считаю, сколько подходит…';
+    try {
+      const pages = await Promise.all(specs.map(spec => fetchDiscoverPage(spec, filters, 1)));
+      if (myToken !== poolCountToken) return; // фильтр успел измениться — этот ответ уже не актуален
+      const total = pages.reduce((sum, p) => sum + (p.total_results || 0), 0);
+      const noun = mediaType === 'tv'
+        ? (total === 1 ? 'сериал' : 'сериалов')
+        : (total === 1 ? 'фильм' : 'фильмов');
+      poolCountEl.textContent = 'По всем настроенным фильтрам подходит: ' + total.toLocaleString('ru-RU') + ' ' + noun;
+    } catch (e) {
+      if (myToken !== poolCountToken) return;
+      poolCountEl.textContent = '';
+    }
+  }
+
+  function schedulePoolCountUpdate() {
+    clearTimeout(poolCountTimer);
+    poolCountTimer = setTimeout(refreshPoolCount, 350);
+  }
+
   // Позволяет крутить колёсико мыши над сфокусированным числовым полем, чтобы
   // менять значение на step, не трогая клавиатуру — так же удобно, как ползунок,
   // но поле при этом остаётся обычным вводимым числом (можно и напечатать).
@@ -1605,6 +2041,7 @@
   // подпись рядом с заголовком не нужна и только дублирует то же самое.
   const minRatingInput = document.getElementById('minRatingInput');
   enableWheelStep(minRatingInput, 0.1, 0, 10);
+  minRatingInput.addEventListener('input', schedulePoolCountUpdate);
 
   // Разбирает то, что человек напечатал руками, в минуты. Понимает и просто
   // "100", и "1ч 40мин", и "1ч40м", и "1:40" — чтобы дружелюбный формат
@@ -1648,6 +2085,7 @@
       const mins = parseRuntimeInput(input.value);
       input.dataset.minutes = String(mins);
       input.value = formatRuntimeDisplay(mins);
+      schedulePoolCountUpdate();
     });
     input.addEventListener('wheel', (e) => {
       if (document.activeElement !== input) return;
@@ -1657,6 +2095,7 @@
       mins = Math.max(0, Math.min(600, mins));
       input.dataset.minutes = String(mins);
       input.value = mins > 0 ? String(mins) : '';
+      schedulePoolCountUpdate();
     }, { passive: false });
   }
 
@@ -1664,6 +2103,9 @@
   const runtimeToInput = document.getElementById('runtimeTo');
   setupRuntimeInput(runtimeFromInput, 5);
   setupRuntimeInput(runtimeToInput, 5);
+
+  document.getElementById('yearFrom').addEventListener('input', schedulePoolCountUpdate);
+  document.getElementById('yearTo').addEventListener('input', schedulePoolCountUpdate);
 
   // "Спек" — набор параметров одного под-запроса. Обычно один (выбранные
   // жанры + страны), но если включено "Аниме" — добавляется второй спек
@@ -1673,6 +2115,17 @@
     const specs = [];
     if (filters.genreIds.length > 0) {
       specs.push({ genreIds: filters.genreIds, countries: filters.countries, isAnimeSpec: false });
+      // У российских фильмов в TMDb сильно больше карточек без единого голоса,
+      // чем у большинства других стран (проверено live через API: разрыв
+      // Россия/Германия резко растёт именно на переходе с 0 на 1+ голос) —
+      // общий порог сильнее режет именно российское кино. Когда Россия выбрана
+      // как страна, добавляем ОТДЕЛЬНЫЙ спек только по России с более мягким
+      // порогом голосов (2 вместо 5 у фильмов) — он только РАСШИРЯЕТ пул
+      // (добавляет фильмы с 2-4 голосами), ничего не убирая из основного
+      // запроса. У сериалов порог уже и так 2, поэтому спек не нужен.
+      if (mediaType === 'movie' && filters.countries.includes('RU')) {
+        specs.push({ genreIds: filters.genreIds, countries: ['RU'], isAnimeSpec: false, voteCountMin: 2 });
+      }
     }
     if (filters.wantsAnime) {
       specs.push({ genreIds: [ANIMATION_GENRE_ID], countries: ['JP', 'KR'], isAnimeSpec: true });
@@ -1707,10 +2160,23 @@
     }
     // Запятая у with_genres — официально документированное "И" у TMDb (фильм
     // должен иметь все перечисленные жанры разом), вертикальная черта — "ИЛИ".
+    // Порог по количеству оценок (vote_count.gte) раньше был общим и равным 150
+    // для фильмов и сериалов — это отсекало почти весь каталог (проверено live
+    // через TMDb API: 150 оценок оставляет ~17.7к фильмов и ~3.2к сериалов из
+    // 1.16М и 228К соответственно). У сериалов в базе TMDb физически в разы
+    // меньше записей, чем у фильмов, поэтому ОДИНАКОВЫЙ порог всегда даёт
+    // соотношение фильмы/сериалы ~5.5x независимо от значения порога — только
+    // РАЗНЫЕ пороги для двух типов способны сблизить соотношение. Текущие
+    // значения (фильмы vote_count.gte=5 → ~168К, сериалы vote_count.gte=2 →
+    // ~56К) дают суммарно ~224К (в районе желаемых 250К) и соотношение ~3x
+    // вместо прежних ~5.6x. spec.voteCountMin позволяет отдельным спекам
+    // (например, RU-спеку из buildQuerySpecs) переопределить этот порог.
+    const defaultVoteMin = mediaType === 'tv' ? 2 : 5;
+    const voteMin = spec.voteCountMin !== undefined ? spec.voteCountMin : defaultVoteMin;
     const params = {
       sort_by: 'popularity.desc',
       include_adult: 'false',
-      'vote_count.gte': '150',
+      'vote_count.gte': String(voteMin),
       with_genres: spec.genreIds.join(genreMatchMode === 'and' ? ',' : '|'),
       page: String(page)
     };
@@ -1783,6 +2249,21 @@
     }
     specStates.forEach(s => collectVisual(s.first.results));
 
+    // Отдельно копим только по-настоящему "честный" пул — те, что прошли те же
+    // фильтры (есть постер/описание, ещё не выпадали), т.е. реально МОГЛИ бы
+    // стать победителем. Когда таких мало (например, у актёра всего 5 фильмов
+    // и 3 уже выпадали — честных остаётся 2), лента должна крутить именно их,
+    // а не более широкий "фарш", в котором были бы и уже показанные фильмы —
+    // иначе лента выглядит так, будто вариантов больше, чем есть на самом деле.
+    const FEW_CANDIDATES_THRESHOLD = 15;
+    const freshPoolMap = new Map();
+    function collectFresh(results) {
+      (results || []).filter(goodCandidate).filter(notSeen).forEach(m => {
+        if (!freshPoolMap.has(m.id)) freshPoolMap.set(m.id, m);
+      });
+    }
+    specStates.forEach(s => collectFresh(s.first.results));
+
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const state = pickWeightedSpec(specStates);
       let page = Math.floor(Math.random() * state.maxPage) + 1;
@@ -1796,16 +2277,26 @@
 
       const data = (page === 1) ? state.first : await fetchDiscoverPage(state.spec, filters, page);
       collectVisual(data.results);
+      collectFresh(data.results);
 
       const fresh = (data.results || []).filter(goodCandidate).filter(notSeen);
       if (fresh.length > 0) {
         const winner = fresh[Math.floor(Math.random() * fresh.length)];
-        return { winner, pool: fresh, visualPool: Array.from(visualPoolMap.values()) };
+        const genuinePool = Array.from(freshPoolMap.values());
+        const visualPool = (genuinePool.length > 0 && genuinePool.length < FEW_CANDIDATES_THRESHOLD)
+          ? genuinePool
+          : Array.from(visualPoolMap.values());
+        return { winner, pool: fresh, visualPool };
       }
     }
 
     return { error: 'exhausted' };
   }
+
+  // Хранит фильмы/сериалы, которые сейчас показаны в ленте (по индексу тайла),
+  // чтобы по клику на соседний тайл можно было открыть именно его карточку —
+  // это настоящие фильмы из API, а не просто декоративные картинки.
+  let currentReelTiles = [];
 
   // Строит декоративную ленту так, чтобы один и тот же постер никогда не стоял
   // в двух соседних карточках, а постер победителя не "спойлерился" заранее
@@ -1853,6 +2344,45 @@
     })));
   }
 
+  // Индекс победителя текущего спина — после остановки ленты именно вокруг
+  // него держится "окно" в 2 тайла в каждую сторону, за которое нельзя
+  // доехать по клику (см. centerTileInViewport и клик-обработчик ниже).
+  // null пока лента ещё крутится (тогда никакого ограничения нет).
+  let currentWinnerIndex = null;
+
+  // Центрирует тайл с заданным индексом по середине видимой области ленты —
+  // используется и сразу после остановки, и при "довороте" к соседнему тайлу
+  // после клика. Раньше здесь ещё физически удаляли из DOM все тайлы за
+  // пределами окна ±2 — это ломало раскладку (лента "кривилась") сразу после
+  // долгого 11-секундного transition. Вместо удаления — просто не даём
+  // translateX выехать за пределы окна: тайлы вне него остаются в DOM, но
+  // доехать до них по клику или прокрутке невозможно.
+  function centerTileInViewport(localIndex) {
+    const tileStep = measureTileStep();
+    const viewportWidth = reelViewport.clientWidth;
+    const trackWidth = reelTrack.children.length * tileStep;
+    const targetCenter = localIndex * tileStep + tileStep / 2;
+    let finalX = viewportWidth / 2 - targetCenter;
+
+    if (currentWinnerIndex !== null) {
+      // Окно вокруг победителя: не даём выехать так, чтобы стал виден тайл
+      // дальше чем на 2 позиции от него в любую сторону.
+      const WINDOW = 2;
+      const minIdx = currentWinnerIndex - WINDOW;
+      const maxIdx = currentWinnerIndex + WINDOW;
+      const maxX = -(minIdx * tileStep); // левый край minIdx впритык к левому краю вьюпорта
+      const minX = viewportWidth - (maxIdx + 1) * tileStep; // правый край maxIdx впритык к правому краю
+      finalX = Math.max(minX, Math.min(maxX, finalX));
+    } else if (trackWidth > viewportWidth) {
+      // Общий случай (на всякий случай) — не даём отъехать дальше края самого
+      // первого/последнего тайла во всей ленте, чтобы не осталось пустого места.
+      const minX = viewportWidth - trackWidth;
+      finalX = Math.min(0, Math.max(minX, finalX));
+    }
+
+    reelTrack.style.transform = `translateX(${finalX}px)`;
+  }
+
   async function animateReel(pool, winner, onDone) {
     reelPlaceholder.classList.add('hidden');
     const { tiles, winnerIndex } = buildTiles(pool, winner);
@@ -1864,8 +2394,10 @@
 
     reelTrack.style.transition = 'none';
     reelTrack.style.transform = 'translateX(0px)';
-    reelTrack.innerHTML = tiles.map(m =>
-      `<div class="reel-tile"><img src="${IMG_BASE}w185${m.poster_path}" alt="${(m.title || '').replace(/"/g, '')}"></div>`
+    currentReelTiles = tiles;
+    currentWinnerIndex = null; // окно ±2 ещё не действует, пока лента крутится
+    reelTrack.innerHTML = tiles.map((m, i) =>
+      `<div class="reel-tile" data-idx="${i}"><img src="${IMG_BASE}w185${m.poster_path}" alt="${(m.title || '').replace(/"/g, '')}"></div>`
     ).join('');
 
     // Форсируем перерасчёт стилей, чтобы следующий transition сработал корректно
@@ -1890,14 +2422,51 @@
     const bg = winner.backdrop_path || winner.poster_path;
     if (bg) { const b = new Image(); b.src = IMG_BASE + 'w780' + bg; }
 
-    const onEnd = () => {
+    const onEnd = (e) => {
+      // transitionend всплывает от ДОЧЕРНИХ элементов тоже — например, от
+      // hover-эффекта на отдельном тайле (наведение мышкой во время вращения
+      // тоже запускает свой мини-переход box-shadow/transform). Без этой
+      // проверки такое всплытие засчитывалось как "лента доехала", и карточка
+      // с описанием открывалась раньше времени, а тайл-победитель подсвечивался
+      // до реальной остановки. Реагируем только на переход самого reelTrack.
+      if (e.target !== reelTrack) return;
       reelTrack.removeEventListener('transitionend', onEnd);
       const winnerTile = reelTrack.children[winnerIndex];
       if (winnerTile) winnerTile.classList.add('winner');
+      // Лента уже стоит точно на победителе (см. finalX выше) — здесь просто
+      // включаем ограничение окна ±2 для последующих кликов по соседям,
+      // не трогая ни DOM, ни transform, чтобы ничего не "перерисовывалось".
+      // Переключаем transition на короткий — 11-секундный cubic-bezier больше
+      // не нужен, а вот "доворот" к соседнему тайлу по клику должен быть быстрым.
+      reelTrack.style.transition = 'transform .4s ease';
+      currentWinnerIndex = winnerIndex;
       onDone();
     };
     reelTrack.addEventListener('transitionend', onEnd);
   }
+
+  // Соседние тайлы в ленте — настоящие фильмы/сериалы из API (не просто
+  // декоративные картинки), так что по клику на любой из них (кроме как во
+  // время самого вращения) можно открыть именно его — если рулетка выдала
+  // что-то неинтересное, а рядом стоит что-то более подходящее или уже
+  // просмотренное раньше.
+  reelTrack.addEventListener('click', (e) => {
+    if (spinning) return;
+    const tileEl = e.target.closest('.reel-tile');
+    if (!tileEl) return;
+    const idx = Number(tileEl.dataset.idx);
+    // Кликать можно только по тайлам не дальше чем на 2 позиции от выпавшего —
+    // остальные вообще не реагируют на клик, даже если попали в кадр.
+    if (currentWinnerIndex !== null && Math.abs(idx - currentWinnerIndex) > 2) return;
+    const movie = currentReelTiles[idx];
+    if (!movie) return;
+    reelTrack.querySelectorAll('.reel-tile.winner').forEach(t => t.classList.remove('winner'));
+    tileEl.classList.add('winner');
+    revealResult(movie);
+    addToHistory(movie);
+    resultCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    centerTileInViewport(idx);
+  });
 
   // Растёт при каждом новом revealResult() — если пользователь успел
   // переключиться на другой фильм/сериал до того, как асинхронный запрос
@@ -2036,6 +2605,13 @@
       .map(id => GENRE_ID_LABELS[id] ? `<span class="genre-tag">${GENRE_ID_LABELS[id]}</span>` : '')
       .join('');
     if (movie.media_type === 'tv') renderCountryTags(movie.origin_country);
+
+    // Кнопка "Найти фильм на YouTube" — только для фильмов (у сериала нет
+    // единой длительности, с которой можно было бы сверить видео), и сбрасываем
+    // её в исходное состояние на каждый новый результат, иначе после первого
+    // найденного фильма кнопка так и останется ссылкой на предыдущее видео.
+    resetFullMovieButton(movie.media_type !== 'tv');
+    resetReviewsButton();
 
     resultCard.classList.add('show');
 
@@ -2239,6 +2815,225 @@
   trailerModal.addEventListener('click', (e) => {
     if (e.target === trailerModal) closeTrailerModal();
   });
+
+  // --- "Найти фильм на YouTube" ---
+  // У TMDb нет данных о полном фильме на YouTube — там хранятся только
+  // официальные трейлеры/клипы (это то, что открывает кнопка выше). Поэтому
+  // ищем сами через отдельный YouTube Data API v3 (YOUTUBE_API_KEY, не
+  // TMDb-ключ): сначала берём кандидатов с videoDuration=long (YouTube сам
+  // отсекает ролики короче ~20 минут — это уже убирает большинство
+  // трейлеров/нарезок/реакций), затем у оставшихся сверяем РЕАЛЬНУЮ
+  // длительность видео (через videos.list) с длительностью самого фильма из
+  // TMDb (её берём тем же fetchWatchEnrichment, что и для "Странички
+  // киномана") и берём то видео, чья длительность ближе всего и попадает в
+  // допуск. Так отсеиваются "обзор фильма", "трейлер + реакция" и подобное,
+  // что прошло бы просто по совпадению в названии. Поиск запускается только
+  // по клику (не на каждый спин) — search-запрос стоит 100 из ~10000 дневных
+  // юнитов квоты YouTube API, при спине на каждый результат квота бы кончилась
+  // за пару минут использования.
+  const fullMovieBtn = document.getElementById('fullMovieBtn');
+
+  function resetFullMovieButton(shouldShow) {
+    fullMovieBtn.classList.toggle('hidden', !shouldShow);
+    fullMovieBtn.disabled = false;
+    fullMovieBtn.textContent = '🔍 Найти фильм на YouTube';
+    fullMovieBtn.onclick = shouldShow ? handleFindFullMovie : null;
+  }
+
+  // "PT1H32M11S" -> количество секунд
+  function parseIso8601DurationToSeconds(iso) {
+    const m = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(iso || '');
+    if (!m) return 0;
+    const h = Number(m[1] || 0), mi = Number(m[2] || 0), s = Number(m[3] || 0);
+    return h * 3600 + mi * 60 + s;
+  }
+
+  async function youtubeApiGet(path, params) {
+    const url = new URL('https://www.googleapis.com/youtube/v3/' + path);
+    url.searchParams.set('key', YOUTUBE_API_KEY);
+    Object.entries(params || {}).forEach(([k, v]) => url.searchParams.set(k, v));
+    const res = await fetch(url.toString());
+    const data = await res.json();
+    if (!res.ok) {
+      const reason = data && data.error && data.error.message ? data.error.message : ('HTTP ' + res.status);
+      throw new Error(reason);
+    }
+    return data;
+  }
+
+  async function handleFindFullMovie() {
+    const movie = currentResultMovie;
+    if (!movie) return;
+    fullMovieBtn.disabled = true;
+    fullMovieBtn.textContent = 'Ищем… 0%';
+
+    // Условный прогресс на кнопке (как у трейлера) — поиск идёт через 3
+    // последовательных запроса (детали фильма + search + videos.list), и
+    // если он тормозит (например, YouTube плохо доступен из России), кнопка
+    // без этого просто висела бы с одним и тем же текстом "Ищем…" минутами,
+    // что выглядит как зависание. Проценты растут быстро вначале и
+    // замедляются к 95% — настоящую скорость сети заранее не узнать, но так
+    // видно, что процесс идёт, а не завис.
+    let fakePercent = 0;
+    const progressTimer = setInterval(() => {
+      fakePercent += Math.max(0.3, (95 - fakePercent) / 40);
+      if (fakePercent > 95) fakePercent = 95;
+      fullMovieBtn.textContent = 'Ищем… ' + Math.floor(fakePercent) + '%';
+    }, 200);
+
+    try {
+      const enrichment = await fetchWatchEnrichment(movie);
+      const runtimeMinutes = enrichment.runtimeMinutes || 0;
+      if (!runtimeMinutes) {
+        fullMovieBtn.textContent = 'Нет данных о длительности — не проверить';
+        return;
+      }
+      const title = movie.title || movie.original_title || '';
+      const year = movie.release_date ? movie.release_date.slice(0, 4) : '';
+      const query = [title, year, 'фильм'].filter(Boolean).join(' ');
+
+      const searchData = await youtubeApiGet('search', {
+        part: 'snippet',
+        type: 'video',
+        maxResults: '8',
+        videoDuration: 'long',
+        relevanceLanguage: 'ru',
+        q: query
+      });
+      const ids = (searchData.items || [])
+        .map(it => it.id && it.id.videoId)
+        .filter(Boolean);
+      if (ids.length === 0) {
+        fullMovieBtn.textContent = 'Не нашли на YouTube';
+        return;
+      }
+
+      const detailsData = await youtubeApiGet('videos', {
+        part: 'contentDetails,snippet',
+        id: ids.join(',')
+      });
+      const targetSeconds = runtimeMinutes * 60;
+      // Допуск ±20% от длительности фильма, но не меньше 8 минут — учитывает
+      // разницу из-за титров/интро у конкретной загрузки, но не даёт принять
+      // получасовой обзор за полный фильм.
+      const tolerance = Math.max(8 * 60, targetSeconds * 0.2);
+
+      let best = null;
+      let bestDiff = Infinity;
+      (detailsData.items || []).forEach(item => {
+        const seconds = parseIso8601DurationToSeconds(item.contentDetails && item.contentDetails.duration);
+        if (!seconds) return;
+        const diff = Math.abs(seconds - targetSeconds);
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          best = item;
+        }
+      });
+
+      if (best && bestDiff <= tolerance) {
+        fullMovieBtn.textContent = '▶ Смотреть на YouTube';
+        fullMovieBtn.onclick = () => window.open('https://www.youtube.com/watch?v=' + best.id, '_blank', 'noopener');
+      } else {
+        fullMovieBtn.textContent = 'Не нашли точное совпадение по длительности';
+      }
+    } catch (e) {
+      fullMovieBtn.textContent = 'Ошибка поиска: ' + (e.message || 'см. консоль');
+    } finally {
+      if (fullMovieBtn.textContent !== '▶ Смотреть на YouTube') {
+        fullMovieBtn.disabled = false;
+      }
+    }
+  }
+
+  // --- Отзывы с TMDb (случайные, под постером) ---
+  // Отзывы у TMDb — это текст, который ввёл сам пользователь, а не одно из
+  // "переводимых" полей (как overview/title) — своего перевода на русский у
+  // них нет, поэтому в основном они на английском независимо от языка
+  // запроса. Показываем 2-3 случайных отзыва (не все — их бывает много и
+  // они длинные), с обрезкой длинного текста и ссылкой "читать полностью" на
+  // страницу отзыва на TMDb.
+  const reviewsBtn = document.getElementById('reviewsBtn');
+  const reviewsBox = document.getElementById('reviewsBox');
+
+  function resetReviewsButton() {
+    // Явно снимаем hidden — клик "Отзывы" на предыдущем фильме прячет кнопку
+    // (она своё дело сделала), и без этой строки состояние "скрыта" тянулось
+    // на все следующие фильмы до конца сессии.
+    reviewsBtn.classList.remove('hidden');
+    reviewsBtn.disabled = false;
+    reviewsBtn.textContent = '💬 Отзывы';
+    reviewsBox.classList.add('hidden');
+    reviewsBox.innerHTML = '';
+    reviewsBtn.onclick = handleShowReviews;
+  }
+
+  // Отзывы иногда используют markdown (**жирный**, _курсив_, "> цитата") —
+  // убираем самую распространённую разметку, чтобы в узкой колонке под
+  // постером не мелькали лишние звёздочки и подчёркивания.
+  function stripReviewMarkdown(text) {
+    return (text || '')
+      .replace(/\*\*(.*?)\*\*/g, '$1')
+      .replace(/\*(.*?)\*/g, '$1')
+      .replace(/_{1,2}(.*?)_{1,2}/g, '$1')
+      .replace(/^>\s?/gm, '')
+      .replace(/\r\n/g, '\n')
+      .trim();
+  }
+
+  function renderReviews(reviews) {
+    if (reviews.length === 0) {
+      reviewsBox.innerHTML = '<div class="review-empty">На TMDb пока нет отзывов на этот фильм.</div>';
+      reviewsBox.classList.remove('hidden');
+      return;
+    }
+    // Никакой обрезки — берутся уже отобранные короткие отзывы целиком (см.
+    // pickShortReviews), поэтому в карточке всегда полный текст без "читать
+    // полностью".
+    reviewsBox.innerHTML = reviews.map(r => {
+      const text = stripReviewMarkdown(r.content);
+      const rating = r.author_details && r.author_details.rating ? ' · ★' + r.author_details.rating : '';
+      const author = (r.author || (r.author_details && r.author_details.username) || 'Аноним');
+      return '<div class="review-item">' +
+        '<div class="review-author">' + escapeHtml(author) + '<span class="review-rating">' + rating + '</span></div>' +
+        '<div class="review-text">' + escapeHtml(text) + '</div>' +
+        '</div>';
+    }).join('');
+    reviewsBox.classList.remove('hidden');
+  }
+
+  // Берём ровно 3 (или меньше, если отзывов не хватает) самых коротких
+  // отзыва — раньше показывали случайные и обрезали длинные по символам, но
+  // "обрезано на middle слова" смотрится некрасиво и всегда нужна ссылка
+  // "читать полностью". Короткие отзывы обычно и так укладываются в 1-3
+  // предложения — их можно показать целиком и они примерно одной длины.
+  function pickShortReviews(all, count) {
+    return all.slice().sort((a, b) => (a.content || '').length - (b.content || '').length).slice(0, count);
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  async function handleShowReviews() {
+    const movie = currentResultMovie;
+    if (!movie) return;
+    reviewsBtn.disabled = true;
+    reviewsBtn.textContent = 'Загрузка…';
+    try {
+      const tmdbType = movie.media_type === 'tv' ? 'tv' : 'movie';
+      const data = await apiGet('/' + tmdbType + '/' + movie.id + '/reviews', {});
+      const all = data.results || [];
+      renderReviews(pickShortReviews(all, 3));
+      reviewsBtn.classList.add('hidden');
+    } catch (e) {
+      reviewsBox.innerHTML = '<div class="review-empty">Не удалось загрузить отзывы.</div>';
+      reviewsBox.classList.remove('hidden');
+      reviewsBtn.disabled = false;
+      reviewsBtn.textContent = '💬 Отзывы';
+    }
+  }
 
   // --- Модальное окно "Избранное" (буду смотреть) ---
   const favoritesModal = document.getElementById('favoritesModal');
@@ -2471,6 +3266,7 @@
       spinBtn.textContent = 'Крутить рулетку';
 
       renderGenrePills();
+      schedulePoolCountUpdate();
     });
   });
 
@@ -2479,6 +3275,7 @@
   updateFavoritesCount();
   updateWatchedCount();
   renderGenrePills();
+  refreshPoolCount();
 </script>
 </body>
 </html>
