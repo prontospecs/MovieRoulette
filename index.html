@@ -2832,8 +2832,22 @@
   // юнитов квоты YouTube API, при спине на каждый результат квота бы кончилась
   // за пару минут использования.
   const fullMovieBtn = document.getElementById('fullMovieBtn');
+  // Поиск асинхронный (3 запроса подряд) и раньше не отменялся при переходе
+  // к новому фильму — старый setInterval с процентами и сам поиск продолжали
+  // жить в фоне и позже дописывали свои проценты/результат в кнопку уже
+  // ДРУГОГО фильма, а если успеть нажать кнопку ещё раз — заводился второй
+  // независимый интервал поверх первого ("два счётчика"). fullMovieSearchToken
+  // помечает каждый новый запуск: старый прогон при следующей же проверке
+  // видит, что его токен устарел, и просто перестаёт трогать кнопку/интервал.
+  let fullMovieSearchToken = 0;
+  let fullMovieProgressTimer = null;
 
   function resetFullMovieButton(shouldShow) {
+    fullMovieSearchToken++; // инвалидирует любой ещё не завершившийся поиск
+    if (fullMovieProgressTimer) {
+      clearInterval(fullMovieProgressTimer);
+      fullMovieProgressTimer = null;
+    }
     fullMovieBtn.classList.toggle('hidden', !shouldShow);
     fullMovieBtn.disabled = false;
     fullMovieBtn.textContent = '🔍 Найти фильм на YouTube';
@@ -2848,11 +2862,31 @@
     return h * 3600 + mi * 60 + s;
   }
 
+  // У fetch() нет встроенного таймаута — если googleapis.com не отвечает
+  // (например, YouTube плохо доступен из текущей сети), запрос может висеть
+  // бесконечно, а не завершиться ошибкой. Именно из-за этого кнопка
+  // "зависала" на 95% навсегда: прогресс есть, а реального завершения
+  // (успех/ошибка) не происходит. AbortController принудительно обрывает
+  // запрос через YOUTUBE_TIMEOUT_MS, чтобы честно показать ошибку.
+  const YOUTUBE_TIMEOUT_MS = 30000;
+
   async function youtubeApiGet(path, params) {
     const url = new URL('https://www.googleapis.com/youtube/v3/' + path);
     url.searchParams.set('key', YOUTUBE_API_KEY);
     Object.entries(params || {}).forEach(([k, v]) => url.searchParams.set(k, v));
-    const res = await fetch(url.toString());
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), YOUTUBE_TIMEOUT_MS);
+    let res;
+    try {
+      res = await fetch(url.toString(), { signal: controller.signal });
+    } catch (e) {
+      if (e.name === 'AbortError') {
+        throw new Error('YouTube не отвечает (тайм-аут ' + (YOUTUBE_TIMEOUT_MS / 1000) + ' сек) — возможно, он плохо доступен из вашей сети');
+      }
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
     const data = await res.json();
     if (!res.ok) {
       const reason = data && data.error && data.error.message ? data.error.message : ('HTTP ' + res.status);
@@ -2864,6 +2898,15 @@
   async function handleFindFullMovie() {
     const movie = currentResultMovie;
     if (!movie) return;
+    // Свой номер прогона — если пока идёт запрос пользователь перейдёт к
+    // другому фильму (resetFullMovieButton) или как-то умудрится запустить
+    // поиск ещё раз, fullMovieSearchToken сдвинется, и все "if (myToken !==
+    // fullMovieSearchToken)" ниже увидят, что этот прогон устарел, и молча
+    // перестанут писать в кнопку — она к этому моменту уже принадлежит
+    // другому фильму/прогону.
+    const myToken = ++fullMovieSearchToken;
+    if (fullMovieProgressTimer) clearInterval(fullMovieProgressTimer);
+
     fullMovieBtn.disabled = true;
     fullMovieBtn.textContent = 'Ищем… 0%';
 
@@ -2875,7 +2918,8 @@
     // замедляются к 95% — настоящую скорость сети заранее не узнать, но так
     // видно, что процесс идёт, а не завис.
     let fakePercent = 0;
-    const progressTimer = setInterval(() => {
+    fullMovieProgressTimer = setInterval(() => {
+      if (myToken !== fullMovieSearchToken) { clearInterval(fullMovieProgressTimer); return; }
       fakePercent += Math.max(0.3, (95 - fakePercent) / 40);
       if (fakePercent > 95) fakePercent = 95;
       fullMovieBtn.textContent = 'Ищем… ' + Math.floor(fakePercent) + '%';
@@ -2883,6 +2927,7 @@
 
     try {
       const enrichment = await fetchWatchEnrichment(movie);
+      if (myToken !== fullMovieSearchToken) return;
       const runtimeMinutes = enrichment.runtimeMinutes || 0;
       if (!runtimeMinutes) {
         fullMovieBtn.textContent = 'Нет данных о длительности — не проверить';
@@ -2900,6 +2945,7 @@
         relevanceLanguage: 'ru',
         q: query
       });
+      if (myToken !== fullMovieSearchToken) return;
       const ids = (searchData.items || [])
         .map(it => it.id && it.id.videoId)
         .filter(Boolean);
@@ -2912,6 +2958,7 @@
         part: 'contentDetails,snippet',
         id: ids.join(',')
       });
+      if (myToken !== fullMovieSearchToken) return;
       const targetSeconds = runtimeMinutes * 60;
       // Допуск ±20% от длительности фильма, но не меньше 8 минут — учитывает
       // разницу из-за титров/интро у конкретной загрузки, но не даёт принять
@@ -2937,10 +2984,17 @@
         fullMovieBtn.textContent = 'Не нашли точное совпадение по длительности';
       }
     } catch (e) {
+      if (myToken !== fullMovieSearchToken) return;
       fullMovieBtn.textContent = 'Ошибка поиска: ' + (e.message || 'см. консоль');
     } finally {
-      if (fullMovieBtn.textContent !== '▶ Смотреть на YouTube') {
-        fullMovieBtn.disabled = false;
+      if (myToken === fullMovieSearchToken) {
+        if (fullMovieProgressTimer) {
+          clearInterval(fullMovieProgressTimer);
+          fullMovieProgressTimer = null;
+        }
+        if (fullMovieBtn.textContent !== '▶ Смотреть на YouTube') {
+          fullMovieBtn.disabled = false;
+        }
       }
     }
   }
