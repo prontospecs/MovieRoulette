@@ -116,6 +116,34 @@
   .subtitle { color: var(--muted); font-size: 14px; }
   .pool-count { color: var(--gold); font-size: 13px; margin: 8px 0 0; min-height: 18px; }
 
+  .theme-hint {
+    max-width: 560px; margin: 18px auto 8px;
+    color: var(--muted); font-size: 12.5px; line-height: 1.55;
+  }
+  .theme-hint strong { color: var(--gold-2); font-weight: 700; }
+  .theme-search { display: flex; gap: 8px; max-width: 560px; margin: 0 auto 8px; }
+  .theme-search input { flex: 1; min-width: 0; }
+  .theme-search button {
+    padding: 10px 20px; border-radius: 10px; white-space: nowrap;
+    border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+    font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  }
+  .theme-search button:hover:not(:disabled) { border-color: var(--gold); color: var(--gold-2); }
+  .theme-search button:disabled { opacity: .55; cursor: not-allowed; }
+  .theme-chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 8px 6px 14px; border-radius: 999px;
+    background: var(--panel-2); border: 1px solid var(--gold); font-size: 13px;
+  }
+  .theme-chip button { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 16px; line-height: 1; padding: 0 2px; }
+  .theme-chip button:hover { color: var(--danger); }
+  .theme-status { color: var(--muted); font-size: 12px; margin: 6px 0 0; min-height: 16px; }
+  @media (max-width: 480px) {
+    .theme-search { gap: 6px; margin-top: 12px; }
+    .theme-search button { padding: 10px 14px; font-size: 12.5px; }
+  }
+
   .layout { display: grid; grid-template-columns: 280px 1fr; gap: 24px; }
   /* На компьютере "Страничка киномана" — не всплывающее окошко, а такая же
      полноценная панель, как панель жанров слева; добавляет третью колонку,
@@ -553,6 +581,12 @@
   .review-author { display: flex; align-items: center; gap: 6px; color: var(--gold); font-weight: 600; margin-bottom: 4px; }
   .review-rating { color: var(--muted); font-weight: 400; }
   .review-text { color: var(--muted); overflow-wrap: break-word; white-space: pre-wrap; }
+  .review-toggle {
+    margin-top: 6px; padding: 0; border: none; background: none;
+    color: var(--gold-2); font-size: 11px; font-family: inherit; cursor: pointer;
+    text-decoration: underline; opacity: .75;
+  }
+  .review-toggle:hover { opacity: 1; }
   .review-empty { color: var(--muted); font-size: 12px; padding: 4px 2px; }
   /* min-width: 0 — без этого grid/flex-колонка с текстом по умолчанию не
      ужимается уже своего "минимального содержимого" и может стать шире, чем
@@ -798,7 +832,27 @@
       <button class="media-toggle-btn" data-type="tv" type="button">Сериалы</button>
     </div>
     <h1>Рулетка <span>фильмов и сериалов</span></h1>
-    <p class="subtitle" id="subtitleText">Выберите жанры и крутите — фильм выбирается случайно из базы TMDb (сотни тысяч фильмов)</p>
+    <p class="subtitle" id="subtitleText">Выберите жанры и крутите — фильм выбирается случайно из базы TMDb</p>
+
+    <!-- Поиск по теме. Жанров у TMDb всего два десятка, и "про пиратов" или
+         "про гонки" среди них нет — зато есть ключевые слова, их тысячи.
+         Ищутся они только по-английски, поэтому русскую фразу сначала
+         переводит Gemini (см. resolveThemeToKeywords в скрипте). -->
+    <p class="theme-hint">
+      <strong>Поиск по теме</strong> — это не жанр, а о чём фильм.
+      Достаточно одного слова: ограбления, пираты, гонки, зомби, самураи, путешествия во времени.
+      Работает и сам по себе, и вместе с выбранными жанрами.
+    </p>
+    <div class="theme-search">
+      <input type="text" id="themeInput" class="select-field" placeholder="Ограбления, пираты, гонки…" autocomplete="off">
+      <button id="themeBtn" type="button">Найти</button>
+    </div>
+    <div class="theme-chip hidden" id="themeChip">
+      <span id="themeChipText"></span>
+      <button id="themeChipRemove" type="button" title="Убрать тему">×</button>
+    </div>
+    <p class="theme-status" id="themeStatus"></p>
+
     <p class="pool-count" id="poolCountText"></p>
   </header>
 
@@ -845,6 +899,9 @@
       <div class="filter-block">
         <h2>Год выпуска</h2>
         <div class="year-range">
+          <!-- Нижняя граница 1960 — сознательное решение, а не недосмотр: в
+               TMDb есть кино и с 1900-х, но предлагать его в рулетке смысла
+               нет, почти никто такое смотреть не станет. Не поднимать. -->
           <input type="number" id="yearFrom" placeholder="от" min="1960" max="2030">
           <span>—</span>
           <input type="number" id="yearTo" placeholder="до" min="1960" max="2030">
@@ -942,6 +999,7 @@
   const API_KEY = 'baf011ef0382f9cc04a0f69ec8ec82c5';
   const API_BASE = 'https://api.themoviedb.org/3';
   const IMG_BASE = 'https://image.tmdb.org/t/p/';
+  const TMDB_TIMEOUT_MS = 20000;
   // Отдельный ключ YouTube Data API v3 (не TMDb!) — нужен только для поиска
   // полнометражки на YouTube по кнопке "Найти фильм на YouTube". У TMDb в
   // принципе нет поля "фильм целиком" (там хранятся только официальные
@@ -1379,27 +1437,48 @@
     syncToCloud();
   }
 
+  // У TMDb идентификаторы фильмов и сериалов живут в РАЗНЫХ пространствах имён:
+  // id 1399 — это и фильм, и сериал "Игра престолов", и это два совершенно
+  // разных тайтла. Раньше История, Избранное и Просмотренное хранили голый
+  // числовой id, поэтому отметив сериал, вы молча "закрывали" одноимённый по
+  // номеру фильм: он переставал выпадать в рулетке, сердечко на нём горело
+  // само собой, а кнопка показывала "✓ Просмотрено". Ключ обязан включать тип.
+  function mediaKey(m) {
+    return (m && m.media_type === 'tv' ? 'tv' : 'movie') + ':' + (m ? m.id : '');
+  }
+
   let watchHistory = loadHistoryFromStorage();     // полные объекты фильмов, новые сверху
-  let seenIds = new Set(watchHistory.map(m => m.id));
+  let seenIds = new Set(watchHistory.map(mediaKey));
 
   function updateHistoryCount() {
     document.getElementById('historyCount').textContent = '(' + watchHistory.length + ')';
   }
 
   function addToHistory(movie) {
-    if (seenIds.has(movie.id)) return;
-    seenIds.add(movie.id);
+    if (seenIds.has(mediaKey(movie))) return;
+    seenIds.add(mediaKey(movie));
     watchHistory.unshift(Object.assign({}, movie, { seenAt: new Date().toISOString() }));
     saveHistoryToStorage();
     updateHistoryCount();
+    // Фильм ушёл в историю — значит выпасть он больше не может, и счётчик над
+    // рулеткой должен стать на единицу меньше. Проверка нужна на случай, когда
+    // тайтл попал в историю не из рулетки, а кликом в блоке "Похожие" — такой
+    // мог и не подходить под текущие фильтры, тогда уменьшать нечего.
+    if (plausiblyInPool(movie)) adjustPoolCount(-1);
   }
 
   // Удаляет один фильм из истории — он снова сможет выпасть в рулетке.
-  function removeFromHistory(id) {
-    watchHistory = watchHistory.filter(m => m.id !== id);
-    seenIds.delete(id);
+  // Принимает объект целиком, а не id: по одному номеру нельзя отличить фильм
+  // от сериала, и удаление затрагивало бы обоих.
+  function removeFromHistory(movie) {
+    const key = mediaKey(movie);
+    watchHistory = watchHistory.filter(m => mediaKey(m) !== key);
+    seenIds.delete(key);
     saveHistoryToStorage();
     updateHistoryCount();
+    // Обратная операция: фильм снова может выпасть — если он вообще проходит
+    // по текущим фильтрам и не остался закрытым пометкой "уже смотрел(а)".
+    if (!watchedIds.has(key) && plausiblyInPool(movie)) adjustPoolCount(+1);
   }
 
   // --- Список "буду смотреть" (сердечко на карточке результата) ---
@@ -1418,13 +1497,13 @@
   }
 
   let watchlist = loadWatchlistFromStorage();
-  let watchlistIds = new Set(watchlist.map(m => m.id));
+  let watchlistIds = new Set(watchlist.map(mediaKey));
   let currentResultMovie = null;
 
   function updateWatchHeart(movie) {
     const heartBtn = document.getElementById('watchHeartBtn');
     if (!heartBtn || !movie) return;
-    heartBtn.classList.toggle('active', watchlistIds.has(movie.id));
+    heartBtn.classList.toggle('active', watchlistIds.has(mediaKey(movie)));
   }
 
   function updateFavoritesCount() {
@@ -1433,11 +1512,12 @@
 
   function toggleWatchlist(movie) {
     if (!movie) return;
-    if (watchlistIds.has(movie.id)) {
-      watchlistIds.delete(movie.id);
-      watchlist = watchlist.filter(m => m.id !== movie.id);
+    const key = mediaKey(movie);
+    if (watchlistIds.has(key)) {
+      watchlistIds.delete(key);
+      watchlist = watchlist.filter(m => mediaKey(m) !== key);
     } else {
-      watchlistIds.add(movie.id);
+      watchlistIds.add(key);
       watchlist.unshift(Object.assign({}, movie, { addedAt: new Date().toISOString() }));
     }
     saveWatchlistToStorage();
@@ -1446,12 +1526,13 @@
   }
 
   // Удаление одного фильма из "Избранного" (например, крестиком в модалке).
-  function removeFromWatchlist(id) {
-    watchlistIds.delete(id);
-    watchlist = watchlist.filter(m => m.id !== id);
+  function removeFromWatchlist(movie) {
+    const key = mediaKey(movie);
+    watchlistIds.delete(key);
+    watchlist = watchlist.filter(m => mediaKey(m) !== key);
     saveWatchlistToStorage();
     updateFavoritesCount();
-    if (currentResultMovie && currentResultMovie.id === id) updateWatchHeart(currentResultMovie);
+    if (currentResultMovie && mediaKey(currentResultMovie) === key) updateWatchHeart(currentResultMovie);
   }
 
   // --- "Страничка киномана": список реально просмотренных фильмов/сериалов
@@ -1472,18 +1553,30 @@
   function saveWatchedToStorage() {
     try { localStorage.setItem(WATCHED_KEY, JSON.stringify(watchedMovies)); } catch (e) {}
     syncToCloud();
+    // Счётчик здесь трогать не нужно: markAsWatched всегда добавляет тайтл ещё
+    // и в Историю, а вот там уменьшение уже произойдёт. Если фильм в истории
+    // уже был, он и так не мог выпасть — считать нечего.
   }
 
   let watchedMovies = loadWatchedFromStorage();
-  let watchedIds = new Set(watchedMovies.map(m => m.id));
+  let watchedIds = new Set(watchedMovies.map(mediaKey));
 
   function updateWatchedCount() {
     const el = document.getElementById('watchedCount');
     if (el) el.textContent = '(' + watchedMovies.length + ')';
+    if (typeof renderStatsInto !== 'function') return;
     const panel = document.getElementById('statsPanel');
     const desktopBody = document.getElementById('statsBodyDesktop');
-    if (panel && desktopBody && !panel.classList.contains('hidden') && typeof renderStatsInto === 'function') {
+    if (panel && desktopBody && !panel.classList.contains('hidden')) {
       renderStatsInto(desktopBody);
+    }
+    // Мобильная модалка статистики раньше здесь не обновлялась: отметив фильм
+    // просмотренным из Избранного при открытой "Страничке киномана", вы видели
+    // прежние цифры, пока не закроете и не откроете её заново.
+    const modal = document.getElementById('statsModal');
+    const modalBody = document.getElementById('statsBody');
+    if (modal && modalBody && !modal.classList.contains('hidden')) {
+      renderStatsInto(modalBody);
     }
   }
 
@@ -1515,7 +1608,7 @@
   function updateWatchedButton(movie) {
     const btn = document.getElementById('markWatchedBtn');
     if (!btn || !movie) return;
-    const done = watchedIds.has(movie.id);
+    const done = watchedIds.has(mediaKey(movie));
     btn.classList.toggle('active', done);
     btn.textContent = done ? '✓ Просмотрено' : '👁 Уже смотрел(а)';
   }
@@ -1525,8 +1618,8 @@
   // вы точно знаете, что уже смотрели его раньше), и из Избранного.
   // Дополнительно добавляет фильм в Историю, чтобы он больше не выпадал.
   async function markAsWatched(movie) {
-    if (!movie || watchedIds.has(movie.id)) return;
-    watchedIds.add(movie.id); // сразу — чтобы кнопка отреагировала мгновенно
+    if (!movie || watchedIds.has(mediaKey(movie))) return;
+    watchedIds.add(mediaKey(movie)); // сразу — чтобы кнопка отреагировала мгновенно
     updateWatchedButton(movie);
 
     const enrichment = await fetchWatchEnrichment(movie);
@@ -1669,9 +1762,9 @@
             watchHistory = Array.isArray(cloud.history) ? cloud.history : [];
             watchlist = Array.isArray(cloud.watchlist) ? cloud.watchlist : [];
             watchedMovies = Array.isArray(cloud.watched) ? cloud.watched : [];
-            seenIds = new Set(watchHistory.map(m => m.id));
-            watchlistIds = new Set(watchlist.map(m => m.id));
-            watchedIds = new Set(watchedMovies.map(m => m.id));
+            seenIds = new Set(watchHistory.map(mediaKey));
+            watchlistIds = new Set(watchlist.map(mediaKey));
+            watchedIds = new Set(watchedMovies.map(mediaKey));
             saveHistoryToStorage();
             saveWatchlistToStorage();
             saveWatchedToStorage();
@@ -1684,6 +1777,8 @@
           updateHistoryCount();
           updateFavoritesCount();
           updateWatchedCount();
+          // Списки заменились целиком — счётчик надо пересчитать заново.
+          schedulePoolCountUpdate();
           if (currentResultMovie) { updateWatchHeart(currentResultMovie); updateWatchedButton(currentResultMovie); }
         } catch (e) {
           syncingFromCloud = false;
@@ -1722,12 +1817,36 @@
     return a;
   }
 
-  async function apiGet(path, params) {
+  // options.noLanguage — не подставлять language=ru-RU. Нужно для эндпоинтов,
+  // где этот параметр не переводит контент, а ФИЛЬТРУЕТ его по языку. Главный
+  // случай — /reviews: отзывы пишут сами пользователи TMDb, перевода у них нет,
+  // и language=ru-RU просто выбрасывает все отзывы кроме русских, которых
+  // почти не существует. Из-за этого блок отзывов был пуст даже у фильмов с
+  // десятками тысяч оценок (проверено: "Побег из Шоушенка" — 0 отзывов с
+  // language=ru-RU и 21 без него).
+  async function apiGet(path, params, options) {
     const url = new URL(API_BASE + path);
     url.searchParams.set('api_key', API_KEY);
-    url.searchParams.set('language', 'ru-RU');
+    if (!options || !options.noLanguage) url.searchParams.set('language', 'ru-RU');
     Object.entries(params || {}).forEach(([k, v]) => url.searchParams.set(k, v));
-    const res = await fetch(url.toString());
+    // У fetch() нет своего таймаута: если api.themoviedb.org не отвечает
+    // (плохая мобильная сеть, блокировка), запрос висит бесконечно, а не падает
+    // с ошибкой. Кнопка при этом навсегда застревала на "Ищу фильм…" и спин
+    // нельзя было даже повторить — приходилось перезагружать страницу.
+    // У запросов к YouTube такая защита уже была, у TMDb — нет.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TMDB_TIMEOUT_MS);
+    let res;
+    try {
+      res = await fetch(url.toString(), { signal: controller.signal });
+    } catch (e) {
+      if (e.name === 'AbortError') {
+        throw new Error('TMDb не отвечает (тайм-аут ' + (TMDB_TIMEOUT_MS / 1000) + ' сек). Проверьте соединение с интернетом.');
+      }
+      throw new Error('Нет связи с TMDb. Проверьте соединение с интернетом.');
+    } finally {
+      clearTimeout(timer);
+    }
     if (!res.ok) {
       throw new Error('TMDb вернул ошибку (' + res.status + '). Проверьте API-ключ или соединение с интернетом.');
     }
@@ -1948,13 +2067,202 @@
   // (name вместо title, first_air_date вместо release_date), а остальной код
   // приложения (карточка результата, история, избранное, трейлер) написан в
   // терминах "фильма" — чтобы не переписывать всё, просто нормализуем один раз.
-  function normalizeMediaItem(m) {
+  // forcedType нужен там, где тип элемента задаётся не текущим положением
+  // переключателя "Фильмы / Сериалы", а тем тайтлом, от которого мы пляшем.
+  // Пример поломки: вы в режиме "Сериалы" открыли фильм из Истории и нажали на
+  // постер в блоке "Похожие" — рекомендация приходила от /movie/{id}, но
+  // помечалась как 'tv', и дальше всё вело в пустоту: ссылка на TMDb на
+  // несуществующий сериал, трейлер искался не там, "Найти фильм на YouTube"
+  // вообще не показывалась.
+  function normalizeMediaItem(m, forcedType) {
     return Object.assign({}, m, {
       title: m.title || m.name || '',
       release_date: m.release_date || m.first_air_date || '',
-      media_type: mediaType
+      media_type: forcedType || mediaType
     });
   }
+
+  // --- Поиск по теме через ключевые слова TMDb ---
+  //
+  // Жанров у TMDb два десятка, и «про пиратов», «про гонки», «про ограбление»
+  // среди них нет. Зато есть ключевые слова — их тысячи, и они описывают именно
+  // содержание фильма. Проблема одна: ищутся они исключительно по-английски,
+  // запрос «пираты» возвращает ноль результатов. Поэтому фразу пользователя
+  // сначала переводит в английские термины Gemini, а уже по ним ищутся
+  // настоящие id ключевых слов.
+  //
+  // Без ключа Gemini поле продолжает работать — просто текст уходит в поиск
+  // как есть, то есть по-английски ("pirate", "heist") всё найдётся.
+  let selectedTheme = null; // { phrase, ids: [], names: [] }
+
+  // _v2: в v1 темы сохранялись без режима совпадения и разбирались по старому
+  // промпту (одно общее слово вместо нескольких дополняющих). Такие записи
+  // давали слишком широкую выдачу, поэтому версия поднята — старый кэш
+  // игнорируется и темы разбираются заново.
+  const THEME_CACHE_KEY = 'movieRouletteThemes_v2';
+  function loadThemeCache() {
+    try {
+      const raw = localStorage.getItem(THEME_CACHE_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return (parsed && typeof parsed === 'object') ? parsed : {};
+    } catch (e) { return {}; }
+  }
+  let themeCache = loadThemeCache();
+  function saveThemeCache() {
+    try { localStorage.setItem(THEME_CACHE_KEY, JSON.stringify(themeCache)); } catch (e) {}
+  }
+
+  // Просим у Gemini короткие английские термины в том виде, в каком они реально
+  // заведены у TMDb. Вернёт null — не беда, тогда ищем по исходной фразе.
+  async function geminiKeywordTerms(phrase) {
+    if (!GEMINI_API_KEY) return null;
+    const url = 'https://generativelanguage.googleapis.com/v1beta/models/' +
+      GEMINI_MODEL + ':generateContent?key=' + encodeURIComponent(GEMINI_API_KEY);
+    const prompt =
+      'Пользователь ищет фильмы по теме: "' + phrase + '".\n' +
+      'Преобразуй это в от 2 до 4 английских ключевых слов в том виде, в каком они заведены в базе TMDb: ' +
+      'короткие, в нижнем регистре, обычно единственное число. Примеры: pirate, car race, heist, time travel, zombie, samurai.\n' +
+      'Слова должны описывать РАЗНЫЕ стороны темы — место, профессию, предмет, событие, — а не быть синонимами одного и того же. ' +
+      'Для темы "больницы" это hospital, doctor, nurse, surgery; для темы "гонки" — car race, racing driver, racetrack.\n' +
+      'Не добавляй жанры (drama, comedy) — только тему. Верни ТОЛЬКО JSON-массив строк.';
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.2, responseMimeType: 'application/json' }
+        })
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      const raw = data && data.candidates && data.candidates[0] &&
+        data.candidates[0].content && data.candidates[0].content.parts &&
+        data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text;
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return null;
+      return parsed.filter(s => typeof s === 'string' && s.trim()).slice(0, 5).map(s => s.trim().toLowerCase());
+    } catch (e) {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // Из выдачи /search/keyword берём только точное совпадение, а если его нет —
+  // первое название, где термин стоит отдельным словом. Без этой строгости в
+  // выборку лезет мусор: по запросу "pirate" TMDb в том же ответе предлагает
+  // "pilates" и "karate", а по ним нашлись бы совсем другие фильмы.
+  function pickKeywordMatch(results, term) {
+    const list = results || [];
+    const exact = list.find(k => (k.name || '').toLowerCase() === term);
+    if (exact) return exact;
+    const wordRe = new RegExp('(^|\\s)' + term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(\\s|$)', 'i');
+    return list.find(k => wordRe.test(k.name || '')) || null;
+  }
+
+  // Ключевое слово у TMDb помечает "это в фильме есть", а не "фильм об этом".
+  // Поэтому поиск по одному слову даёт много случайного: по теме "больницы"
+  // выпадал "Мой сосед Тоторо" — у него честно проставлен keyword "hospital",
+  // потому что мама девочек лежит в больнице.
+  //
+  // Лечится совпадением сразу по НЕСКОЛЬКИМ словам (запятая у TMDb = И). По
+  // "hospital" находится под тысячу фильмов вперемешку, а по "hospital" И
+  // "doctor" — 77, и это уже действительно кино про врачей. Но у слишком узких
+  // тем строгое совпадение может не оставить вообще ничего, поэтому сначала
+  // замеряем пул: если он приличный — ищем строго, если нет — расширяем до
+  // "любое из слов". Заодно это само отсеивает случай, когда Gemini вернул
+  // синонимы одного слова: их пересечение всегда мизерное, и режим падает в ИЛИ.
+  const STRICT_MIN_RESULTS = 40;
+
+  async function probeKeywordPool(ids, joiner) {
+    try {
+      const data = await apiGet('/discover/' + mediaType, {
+        'vote_count.gte': String(mediaType === 'tv' ? 2 : 5),
+        with_keywords: ids.join(joiner),
+        page: '1'
+      });
+      return data.total_results || 0;
+    } catch (e) { return 0; }
+  }
+
+  async function resolveThemeToKeywords(phrase) {
+    const cacheKey = phrase.trim().toLowerCase();
+    const cached = themeCache[cacheKey];
+    // У записей, сохранённых до появления строгого режима, поля mode нет.
+    if (cached && cached.ids) return { ids: cached.ids, names: cached.names, mode: cached.mode || 'or' };
+
+    const terms = (await geminiKeywordTerms(phrase)) || [cacheKey];
+    const found = await Promise.all(terms.map(async term => {
+      try {
+        const data = await apiGet('/search/keyword', { query: term }, { noLanguage: true });
+        return pickKeywordMatch(data.results, term);
+      } catch (e) { return null; }
+    }));
+
+    const ids = [], names = [];
+    found.forEach(k => {
+      if (k && !ids.includes(k.id)) { ids.push(k.id); names.push(k.name); }
+    });
+
+    let mode = 'or';
+    if (ids.length > 1) {
+      const strictCount = await probeKeywordPool(ids, ',');
+      if (strictCount >= STRICT_MIN_RESULTS) mode = 'and';
+    }
+
+    const resolved = { ids: ids, names: names, mode: mode };
+    if (ids.length > 0) { themeCache[cacheKey] = resolved; saveThemeCache(); }
+    return resolved;
+  }
+
+  const themeInput = document.getElementById('themeInput');
+  const themeBtn = document.getElementById('themeBtn');
+  const themeChip = document.getElementById('themeChip');
+  const themeChipText = document.getElementById('themeChipText');
+  const themeStatus = document.getElementById('themeStatus');
+
+  function clearTheme() {
+    selectedTheme = null;
+    themeChip.classList.add('hidden');
+    themeStatus.textContent = '';
+    schedulePoolCountUpdate();
+  }
+
+  async function applyTheme() {
+    const phrase = themeInput.value.trim();
+    if (!phrase) return;
+    themeBtn.disabled = true;
+    themeStatus.textContent = 'Подбираю тему…';
+    try {
+      const resolved = await resolveThemeToKeywords(phrase);
+      if (resolved.ids.length === 0) {
+        themeStatus.textContent = 'По теме «' + phrase + '» ничего не нашлось — попробуйте сказать иначе';
+        return;
+      }
+      selectedTheme = { phrase: phrase, ids: resolved.ids, names: resolved.names, mode: resolved.mode };
+      themeChipText.textContent = 'Тема: ' + phrase;
+      themeChip.classList.remove('hidden');
+      // Подобранные английские ключевые слова пользователю не показываем — это
+      // внутренняя кухня, читателю она ничего не говорит и только мешает.
+      // В строке состояния остаются только "Подбираю тему…" и сообщения об ошибках.
+      themeStatus.textContent = '';
+      themeInput.value = '';
+      schedulePoolCountUpdate();
+    } catch (e) {
+      themeStatus.textContent = 'Не удалось подобрать тему. Проверьте соединение.';
+    } finally {
+      themeBtn.disabled = false;
+    }
+  }
+
+  themeBtn.addEventListener('click', applyTheme);
+  themeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyTheme(); });
+  document.getElementById('themeChipRemove').addEventListener('click', clearTheme);
 
   function getFilters() {
     const yearFrom = document.getElementById('yearFrom').value.trim();
@@ -1972,6 +2280,8 @@
       genreIds: resolveGenreIds(allKeys.filter(key => key !== ANIME_KEY)),
       wantsAnime: allKeys.includes(ANIME_KEY),
       countries: Array.from(selectedCountries),
+      keywordIds: selectedTheme ? selectedTheme.ids : [],
+      keywordMode: selectedTheme ? selectedTheme.mode : 'or',
       actorId: selectedActor ? selectedActor.id : null,
       yearFrom: yearFrom,
       yearTo: yearTo,
@@ -1981,32 +2291,218 @@
     };
   }
 
-  // Показывает над рулеткой, сколько фильмов/сериалов подходит под ВСЕ
-  // настроенные сейчас фильтры сразу (жанры, страны, актёр, год, рейтинг,
-  // длительность) — то есть ровно то же самое, что реально ищет сама рулетка
-  // при спине (getFilters()). Пересчитывается с небольшой задержкой после
-  // любого изменения фильтра, чтобы не слать запрос на каждый чих подряд.
+  // Показывает над рулеткой, сколько фильмов/сериалов РЕАЛЬНО может выпасть
+  // под настроенные сейчас фильтры.
+  //
+  // Раньше здесь показывалось сырое total_results из ответа TMDb — то есть
+  // сколько карточек нашёл сам TMDb, без учёта двух собственных фильтров
+  // рулетки: goodCandidate (нужны постер И непустое описание на русском —
+  // у TMDb русское описание есть далеко не у всех карточек) и notSeen (фильм
+  // не должен уже лежать в Истории). Из-за этого сверху могло быть написано
+  // "подходит 52", а в ленте крутился один-единственный фильм: остальные 51
+  // отсеивались уже внутри pickRandomMovie. Теперь счётчик применяет ровно те
+  // же два фильтра, что и сама рулетка, и потому не расходится с ней.
+  //
+  // Маленькие пулы считаются ТОЧНО — выкачиваются все страницы и кандидаты
+  // пересчитываются поимённо (заодно дедуплицируются по id между спеками).
+  // Для больших пулов это невозможно (500 страниц ради цифры в заголовке),
+  // поэтому доля пригодных оценивается по выборке из нескольких случайных
+  // страниц и результат помечается как приблизительный (≈).
   const poolCountEl = document.getElementById('poolCountText');
   let poolCountToken = 0;
   let poolCountTimer = null;
 
+  const EXACT_COUNT_MAX_PAGES = 8; // до ~160 карточек на спек — считаем точно
+  const SAMPLE_PAGES = 4;          // столько страниц на спек берётся в выборку для оценки
+
+  function pluralRu(n, one, few, many) {
+    const n10 = n % 10, n100 = n % 100;
+    if (n10 === 1 && n100 !== 11) return one;
+    if (n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14)) return few;
+    return many;
+  }
+  function mediaNoun(n) {
+    return mediaType === 'tv'
+      ? pluralRu(n, 'сериал', 'сериала', 'сериалов')
+      : pluralRu(n, 'фильм', 'фильма', 'фильмов');
+  }
+
+  // Номера страниц для выборки — РАВНОМЕРНО по всему диапазону и всегда одни и
+  // те же при одних и тех же фильтрах. Раньше страницы брались случайно, и
+  // цифра прыгала между пересчётами (120 000 / 115 000 / 136 000): TMDb
+  // сортирует по популярности, и на первых страницах русское описание есть
+  // почти у всех, а на глубоких — у меньшинства. Какие страницы случайно
+  // попались, такая и получалась доля. Равномерный детерминированный срез
+  // (на 1/5, 2/5, 3/5, 4/5 диапазона) и репрезентативнее, и не скачет.
+  function samplePageNumbers(maxPage, count) {
+    const picked = [];
+    for (let i = 1; i <= count; i++) {
+      const page = Math.round(maxPage * i / (count + 1));
+      if (page >= 2 && page <= maxPage && !picked.includes(page)) picked.push(page);
+    }
+    return picked;
+  }
+
+  // Спеки из buildQuerySpecs могут пересекаться между собой, и для счётчика их
+  // тогда нельзя складывать — одни и те же фильмы попадут в сумму дважды.
+  // Главный случай: при "Выбрать все" основной запрос уже содержит жанр
+  // "Мультфильм" по всем странам, то есть целиком включает в себя спек "Аниме"
+  // (мультфильм + Япония/Корея). specCovers отвечает на вопрос "спек a
+  // полностью содержит в себе спек b": жанры a шире, страны не уже, порог
+  // голосов не строже. RU-спек (2-4 голоса) под это не подпадает — у основного
+  // запроса порог 5, так что они не пересекаются и оба остаются.
+  function specCovers(a, b) {
+    if (genreMatchMode !== 'or') return false; // в режиме "И" такое сравнение неверно
+    // Пустой список жанров у a = "любой жанр", это шире чего угодно. Без этой
+    // ветки поиск только по теме ломался: у основного спека жанров нет, и
+    // b.genreIds.every() на пустом массиве возвращает true, из-за чего узкий
+    // спек "Аниме" считался покрывающим широкий основной — и основной
+    // выбрасывался из подсчёта.
+    const aGenres = a.genreIds || [];
+    const bGenres = b.genreIds || [];
+    if (aGenres.length > 0) {
+      if (bGenres.length === 0) return false;
+      if (!bGenres.every(g => aGenres.includes(g))) return false;
+    }
+    const aCountries = a.countries || [];
+    const bCountries = b.countries || [];
+    // Пустой список стран у a = "любая страна", это шире чего угодно.
+    if (aCountries.length > 0) {
+      if (bCountries.length === 0) return false;
+      if (!bCountries.every(c => aCountries.includes(c))) return false;
+    }
+    const defaultVoteMin = mediaType === 'tv' ? 2 : 5;
+    const aMin = a.voteCountMin !== undefined ? a.voteCountMin : defaultVoteMin;
+    const bMin = b.voteCountMin !== undefined ? b.voteCountMin : defaultVoteMin;
+    const aMax = a.voteCountMax !== undefined ? a.voteCountMax : Infinity;
+    const bMax = b.voteCountMax !== undefined ? b.voteCountMax : Infinity;
+    return aMin <= bMin && aMax >= bMax;
+  }
+
+  // Выбрасывает спеки, целиком поглощённые другими. Условие "|| j < i" нужно
+  // на случай двух одинаковых спеков, которые покрывают друг друга взаимно —
+  // тогда выживает только первый, а не исчезают оба.
+  function specsForCount(all) {
+    return all.filter((s, i) => !all.some((o, j) =>
+      j !== i && specCovers(o, s) && (!specCovers(s, o) || j < i)));
+  }
+
+  // Последнее показанное значение и то, получено оно точным подсчётом или
+  // оценкой. Нужно, чтобы после спина цифру можно было поправить на месте, не
+  // гоняя запросы заново — см. adjustPoolCount ниже.
+  let poolCountValue = null;
+  let poolCountExact = false;
+
+  function setPoolCount(value, exact) {
+    poolCountValue = value;
+    poolCountExact = exact;
+    poolCountEl.textContent = 'Подходит: ' + value.toLocaleString('ru-RU') + ' ' + mediaNoun(value);
+  }
+
+  // Грубая проверка "этот тайтл вообще подходит под текущие фильтры". По данным,
+  // которые точно есть в сохранённой карточке: тип, жанры, год, рейтинг. Страна,
+  // длительность и актёр не проверяются — этих полей в discover-выдаче нет.
+  function plausiblyInPool(m) {
+    if (!m) return false;
+    const type = m.media_type === 'tv' ? 'tv' : 'movie';
+    if (type !== mediaType) return false;
+    const filters = getFilters();
+    const ids = m.genre_ids || [];
+    if (filters.genreIds.length > 0 || filters.wantsAnime) {
+      const matches = genreMatchMode === 'and'
+        ? filters.genreIds.every(g => ids.includes(g))
+        : filters.genreIds.concat(filters.wantsAnime ? [ANIMATION_GENRE_ID] : []).some(g => ids.includes(g));
+      if (!matches) return false;
+    }
+    const year = m.release_date ? m.release_date.slice(0, 4) : '';
+    if (filters.yearFrom && (!year || year < filters.yearFrom)) return false;
+    if (filters.yearTo && (!year || year > filters.yearTo)) return false;
+    if (filters.minRating > 0 && (m.vote_average || 0) < filters.minRating) return false;
+    return true;
+  }
+
+  // Правит счётчик на месте, когда один тайтл ушёл в историю или вернулся из неё.
+  //
+  // Полный пересчёт тут не помогает: при большом пуле цифра берётся не подсчётом,
+  // а оценкой по доле пригодных на четырёх страницах выборки. Один выпавший фильм
+  // на эти страницы практически никогда не попадает, поэтому доля не меняется и
+  // пересчёт возвращает ровно то же число. Со стороны это выглядело так, будто
+  // обновление не работает: прокрутил десять фильмов, а над рулеткой всё те же 300.
+  // При точном подсчёте (маленький пул) наоборот — честный пересчёт и быстрый, и
+  // единственно верный, поэтому там запускается он.
+  function adjustPoolCount(delta) {
+    if (poolCountValue === null) return;
+    if (poolCountExact) { schedulePoolCountUpdate(); return; }
+    setPoolCount(Math.max(0, poolCountValue + delta), false);
+  }
+
   async function refreshPoolCount() {
     const myToken = ++poolCountToken;
     const filters = getFilters();
-    const specs = buildQuerySpecs(filters);
+    const specs = specsForCount(buildQuerySpecs(filters));
+    poolCountValue = null;
     if (specs.length === 0) {
-      poolCountEl.textContent = 'Выберите хотя бы один жанр, чтобы узнать, сколько подходит';
+      poolCountEl.textContent = 'Выберите жанр или задайте тему';
       return;
     }
-    poolCountEl.textContent = 'Считаю, сколько подходит…';
+    poolCountEl.textContent = 'Считаю…';
     try {
-      const pages = await Promise.all(specs.map(spec => fetchDiscoverPage(spec, filters, 1)));
+      const firsts = await Promise.all(specs.map(spec => fetchDiscoverPage(spec, filters, 1)));
       if (myToken !== poolCountToken) return; // фильтр успел измениться — этот ответ уже не актуален
-      const total = pages.reduce((sum, p) => sum + (p.total_results || 0), 0);
-      const noun = mediaType === 'tv'
-        ? (total === 1 ? 'сериал' : 'сериалов')
-        : (total === 1 ? 'фильм' : 'фильмов');
-      poolCountEl.textContent = 'По всем настроенным фильтрам подходит: ' + total.toLocaleString('ru-RU') + ' ' + noun;
+
+      const rawTotal = firsts.reduce((sum, p) => sum + (p.total_results || 0), 0);
+      if (rawTotal === 0) {
+        poolCountEl.textContent = 'Подходит: 0';
+        return;
+      }
+
+      const pagesPerSpec = firsts.map(p => Math.max(1, Math.min(p.total_pages || 1, 500)));
+      const exact = pagesPerSpec.every(n => n <= EXACT_COUNT_MAX_PAGES);
+
+      if (exact) {
+        const jobs = [];
+        specs.forEach((spec, i) => {
+          for (let p = 2; p <= pagesPerSpec[i]; p++) jobs.push(fetchDiscoverPage(spec, filters, p));
+        });
+        const rest = await Promise.all(jobs);
+        if (myToken !== poolCountToken) return;
+        const availableIds = new Set();
+        firsts.concat(rest).forEach(p => {
+          (p.results || []).filter(goodCandidate).filter(notSeen).forEach(m => availableIds.add(m.id));
+        });
+        setPoolCount(availableIds.size, true);
+        return;
+      }
+
+      // Пул большой — оцениваем долю пригодных по выборке страниц.
+      //
+      // Доля считается ОТДЕЛЬНО для каждого спека и применяется к его
+      // собственному total_results. Раньше доля была одна общая на все спеки
+      // сразу, и это давало абсурд: добавление "Аниме" УМЕНЬШАЛО итоговую
+      // цифру. Каждый спек отдаёт в выборку одинаковое число страниц
+      // независимо от своего размера, поэтому маленький спек с плохим
+      // покрытием русских описаний перекашивал общую долю и утягивал вниз
+      // оценку по большому спеку, хотя фильмы он только добавляет.
+      //
+      // Первая страница в долю сознательно не входит: она самая популярная, а
+      // значит с самым полным покрытием русских описаний — включать её в
+      // выборку значило бы систематически завышать оценку.
+      const perSpec = await Promise.all(specs.map(async (spec, i) => {
+        const pages = samplePageNumbers(pagesPerSpec[i], SAMPLE_PAGES);
+        const sampled = await Promise.all(pages.map(p => fetchDiscoverPage(spec, filters, p)));
+        const source = sampled.length > 0 ? sampled : [firsts[i]];
+        let seenCards = 0, okCards = 0;
+        source.forEach(p => {
+          (p.results || []).forEach(m => {
+            seenCards++;
+            if (goodCandidate(m) && notSeen(m)) okCards++;
+          });
+        });
+        const ratio = seenCards > 0 ? okCards / seenCards : 1;
+        return Math.round((firsts[i].total_results || 0) * ratio);
+      }));
+      if (myToken !== poolCountToken) return;
+      setPoolCount(perSpec.reduce((sum, n) => sum + n, 0), false);
     } catch (e) {
       if (myToken !== poolCountToken) return;
       poolCountEl.textContent = '';
@@ -2113,7 +2609,12 @@
   // выбор "Аниме" не сужал прочие выбранные жанры до одной Японии.
   function buildQuerySpecs(filters) {
     const specs = [];
-    if (filters.genreIds.length > 0) {
+    // Тема — самостоятельный фильтр: «про пиратов» осмысленно и без единого
+    // выбранного жанра, поэтому основной запрос собирается, если есть хотя бы
+    // что-то одно. Ключевые слова при этом применяются ко ВСЕМ спекам сразу
+    // (см. fetchDiscoverPage), включая аниме — иначе «Аниме» протаскивало бы в
+    // выдачу мультфильмы, к теме отношения не имеющие.
+    if (filters.genreIds.length > 0 || filters.keywordIds.length > 0) {
       specs.push({ genreIds: filters.genreIds, countries: filters.countries, isAnimeSpec: false });
       // У российских фильмов в TMDb сильно больше карточек без единого голоса,
       // чем у большинства других стран (проверено live через API: разрыв
@@ -2123,8 +2624,14 @@
       // порогом голосов (2 вместо 5 у фильмов) — он только РАСШИРЯЕТ пул
       // (добавляет фильмы с 2-4 голосами), ничего не убирая из основного
       // запроса. У сериалов порог уже и так 2, поэтому спек не нужен.
+      // voteCountMax: 4 обязателен — без него этот спек возвращал ВСЕ российские
+      // фильмы с 2+ голосами, то есть полностью включал в себя российскую часть
+      // основного запроса (там порог 5). Из-за этого Россия считалась дважды в
+      // счётчике пула и получала двойной вес в pickWeightedSpec. С верхней
+      // границей 4 спек добавляет ровно то, что обещает комментарий выше:
+      // фильмы с 2-4 голосами, которых в основном запросе нет.
       if (mediaType === 'movie' && filters.countries.includes('RU')) {
-        specs.push({ genreIds: filters.genreIds, countries: ['RU'], isAnimeSpec: false, voteCountMin: 2 });
+        specs.push({ genreIds: filters.genreIds, countries: ['RU'], isAnimeSpec: false, voteCountMin: 2, voteCountMax: 4 });
       }
     }
     if (filters.wantsAnime) {
@@ -2139,9 +2646,14 @@
   async function fetchTvCreditsAsPage(spec, filters) {
     const data = await apiGet('/person/' + filters.actorId + '/tv_credits', {});
     let results = (data.cast || []).map(normalizeMediaItem);
-    results = results.filter(m => genreMatchMode === 'and'
-      ? spec.genreIds.every(g => (m.genre_ids || []).includes(g))
-      : (m.genre_ids || []).some(g => spec.genreIds.includes(g)));
+    // Жанры могут быть не выбраны вовсе (поиск только по теме) — тогда фильтр
+    // по ним не применяется. Без этой проверки режим "ИЛИ" отбрасывал всё:
+    // some() по пустому списку всегда false.
+    if (spec.genreIds.length > 0) {
+      results = results.filter(m => genreMatchMode === 'and'
+        ? spec.genreIds.every(g => (m.genre_ids || []).includes(g))
+        : (m.genre_ids || []).some(g => spec.genreIds.includes(g)));
+    }
     if (spec.countries && spec.countries.length > 0) {
       results = results.filter(m => (m.origin_country || []).some(c => spec.countries.includes(c)));
     }
@@ -2177,9 +2689,22 @@
       sort_by: 'popularity.desc',
       include_adult: 'false',
       'vote_count.gte': String(voteMin),
-      with_genres: spec.genreIds.join(genreMatchMode === 'and' ? ',' : '|'),
       page: String(page)
     };
+    // Пустой with_genres отправлять нельзя — при поиске только по теме жанры
+    // не выбраны вовсе, и TMDb на "with_genres=" отвечает ошибкой.
+    if (spec.genreIds.length > 0) {
+      params.with_genres = spec.genreIds.join(genreMatchMode === 'and' ? ',' : '|');
+    }
+    // Запятая = И (все слова в одном фильме, точнее), черта = ИЛИ (любое из
+    // них, шире). Режим выбирается один раз при разборе темы — см.
+    // resolveThemeToKeywords, там же объяснено, почему это важно.
+    if (filters.keywordIds && filters.keywordIds.length > 0) {
+      params.with_keywords = filters.keywordIds.join(filters.keywordMode === 'and' ? ',' : '|');
+    }
+    // Верхняя граница по голосам нужна только "расширяющим" спекам (см.
+    // buildQuerySpecs), чтобы они не пересекались с основным запросом.
+    if (spec.voteCountMax !== undefined) params['vote_count.lte'] = String(spec.voteCountMax);
     if (spec.countries && spec.countries.length > 0) params.with_origin_country = spec.countries.join('|');
     if (filters.actorId) params.with_cast = String(filters.actorId);
     const dateField = mediaType === 'tv' ? 'first_air_date' : 'primary_release_date';
@@ -2196,8 +2721,14 @@
   function goodCandidate(m) {
     return !!(m.poster_path && m.overview && m.overview.trim().length > 0);
   }
+  // Просмотренное проверяется отдельно от истории, а не через неё. markAsWatched
+  // хоть и добавляет фильм в Историю, но "Очистить историю" её опустошает — и
+  // фильмы, которые вы своими руками отметили как уже просмотренные, начинали
+  // выпадать снова. Отдельная проверка watchedIds делает пометку "Уже
+  // смотрел(а)" по-настоящему постоянной, как и заявлено в её подсказке.
   function notSeen(m) {
-    return !seenIds.has(m.id);
+    const key = mediaKey(m);
+    return !seenIds.has(key) && !watchedIds.has(key);
   }
 
   // Выбирает спек случайно, но НЕ поровну между спеками — с вероятностью,
@@ -2264,6 +2795,28 @@
     }
     specStates.forEach(s => collectFresh(s.first.results));
 
+    // Если весь пул умещается в несколько страниц — забираем его ЦЕЛИКОМ, а не
+    // ищем случайную страницу с хоть каким-то кандидатом. Раньше цикл ниже
+    // выходил на первой же странице, где нашёлся хотя бы один подходящий фильм,
+    // и всё, что лежало на остальных страницах, просто не загружалось. Из-за
+    // этого счётчик наверху ("подходит 8") расходился с лентой, где крутился
+    // один-единственный постер: счётчик-то честно просматривает все страницы.
+    // Побочная польза — победитель теперь выбирается равномерно из всего пула,
+    // а не из той страницы, на которую случайно попали первой.
+    const SMALL_POOL_MAX_PAGES = EXACT_COUNT_MAX_PAGES;
+    if (specStates.every(s => s.maxPage <= SMALL_POOL_MAX_PAGES)) {
+      const jobs = [];
+      specStates.forEach(s => {
+        for (let p = 2; p <= s.maxPage; p++) jobs.push(fetchDiscoverPage(s.spec, filters, p));
+      });
+      const pages = await Promise.all(jobs);
+      pages.forEach(p => { collectVisual(p.results); collectFresh(p.results); });
+      const all = Array.from(freshPoolMap.values());
+      if (all.length === 0) return { error: 'exhausted' };
+      const winner = all[Math.floor(Math.random() * all.length)];
+      return { winner, pool: all, visualPool: all };
+    }
+
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const state = pickWeightedSpec(specStates);
       let page = Math.floor(Math.random() * state.maxPage) + 1;
@@ -2298,20 +2851,35 @@
   // это настоящие фильмы из API, а не просто декоративные картинки.
   let currentReelTiles = [];
 
-  // Строит декоративную ленту так, чтобы один и тот же постер никогда не стоял
-  // в двух соседних карточках, а постер победителя не "спойлерился" заранее
-  // среди фарша (он появляется только в точке остановки).
+  // Строит ленту так, чтобы один и тот же постер никогда не стоял в двух
+  // соседних карточках. При большом пуле победитель дополнительно прячется из
+  // "фарша" и появляется только в точке остановки; при маленьком — участвует
+  // в ленте наравне со всеми (подробности в комментариях внутри).
   function buildTiles(visualPool, winner) {
     const beforeCount = 76;
     const afterCount = 6;
     const total = beforeCount + afterCount;
 
-    const source = (visualPool && visualPool.length > 0 ? visualPool : [winner]).filter(m => m.id !== winner.id);
-    const usable = source.length > 0 ? source : [winner];
+    const pool = (visualPool && visualPool.length > 0) ? visualPool : [winner];
+    const withoutWinner = pool.filter(m => m.id !== winner.id);
+
+    // Победитель исключается из "фарша" только когда вариантов реально много —
+    // тогда это защита от спойлера. При маленьком пуле такое исключение всё
+    // ломало: если подходящих фильмов было два, лента набивалась ЕДИНСТВЕННЫМ
+    // оставшимся постером (82 одинаковые плитки), а приземлялась на второй,
+    // который до этого ни разу не мелькнул. Никакого спойлера при двух фильмах
+    // всё равно нет — оба и так на виду, — поэтому крутим весь пул целиком.
+    const MIN_POOL_FOR_HIDING_WINNER = 8;
+    const smallPool = withoutWinner.length < MIN_POOL_FOR_HIDING_WINNER;
+    const usable = smallPool ? pool : withoutWinner;
+
+    // При маленьком пуле нужен на одну плитку больше: победитель не
+    // вставляется отдельно, а берётся из уже разложенной ленты (см. ниже).
+    const need = smallPool ? total + 1 : total;
 
     let deck = shuffle(usable);
     const filler = [];
-    while (filler.length < total) {
+    while (filler.length < need) {
       if (deck.length === 0) deck = shuffle(usable);
       let next = deck.shift();
       const prev = filler[filler.length - 1];
@@ -2320,6 +2888,25 @@
         next = deck.shift();
       }
       filler.push(next);
+    }
+
+    if (smallPool) {
+      // Раздача идёт колодой с перетасовкой, поэтому фильмы уже распределены по
+      // ленте равномерно и без двух одинаковых подряд. Остаётся объявить точкой
+      // остановки ближайшую к центру позицию, где победитель и так лежит —
+      // если вместо этого впихнуть его отдельной плиткой, чередование
+      // сломается и рядом окажутся два одинаковых постера.
+      let winnerIndex = -1;
+      let bestDistance = Infinity;
+      filler.forEach((m, i) => {
+        if (m.id !== winner.id) return;
+        const distance = Math.abs(i - beforeCount);
+        if (distance < bestDistance) { bestDistance = distance; winnerIndex = i; }
+      });
+      if (winnerIndex >= 0) return { tiles: filler, winnerIndex: winnerIndex };
+      // Страховка на случай, если победителя в пуле почему-то не оказалось.
+      filler[beforeCount] = winner;
+      return { tiles: filler, winnerIndex: beforeCount };
     }
 
     const before = filler.slice(0, beforeCount);
@@ -2397,7 +2984,7 @@
     currentReelTiles = tiles;
     currentWinnerIndex = null; // окно ±2 ещё не действует, пока лента крутится
     reelTrack.innerHTML = tiles.map((m, i) =>
-      `<div class="reel-tile" data-idx="${i}"><img src="${IMG_BASE}w185${m.poster_path}" alt="${(m.title || '').replace(/"/g, '')}"></div>`
+      `<div class="reel-tile" data-idx="${i}"><img src="${IMG_BASE}w185${m.poster_path}" alt="${escapeHtml(m.title || '')}"></div>`
     ).join('');
 
     // Форсируем перерасчёт стилей, чтобы следующий transition сработал корректно
@@ -2422,6 +3009,14 @@
     const bg = winner.backdrop_path || winner.poster_path;
     if (bg) { const b = new Image(); b.src = IMG_BASE + 'w780' + bg; }
 
+    // Страховка: если transitionend по какой-то причине не придёт (transform
+    // не изменился, анимации отключены в системе, вкладка ушла в фон в момент
+    // старта), кнопка навсегда осталась бы в состоянии "Крутится…", а spinning
+    // — true, то есть рулетка блокировалась бы до перезагрузки страницы.
+    // Досрочный вызов безвреден: finish() защищён флагом от повторного входа.
+    let finished = false;
+    let watchdog = null;
+
     const onEnd = (e) => {
       // transitionend всплывает от ДОЧЕРНИХ элементов тоже — например, от
       // hover-эффекта на отдельном тайле (наведение мышкой во время вращения
@@ -2430,6 +3025,13 @@
       // с описанием открывалась раньше времени, а тайл-победитель подсвечивался
       // до реальной остановки. Реагируем только на переход самого reelTrack.
       if (e.target !== reelTrack) return;
+      finish();
+    };
+
+    function finish() {
+      if (finished) return;
+      finished = true;
+      clearTimeout(watchdog);
       reelTrack.removeEventListener('transitionend', onEnd);
       const winnerTile = reelTrack.children[winnerIndex];
       if (winnerTile) winnerTile.classList.add('winner');
@@ -2441,8 +3043,11 @@
       reelTrack.style.transition = 'transform .4s ease';
       currentWinnerIndex = winnerIndex;
       onDone();
-    };
+    }
+
     reelTrack.addEventListener('transitionend', onEnd);
+    // 11 секунд сама анимация плюс 3 секунды запаса.
+    watchdog = setTimeout(finish, 14000);
   }
 
   // Соседние тайлы в ленте — настоящие фильмы/сериалы из API (не просто
@@ -2509,7 +3114,7 @@
         const isFreeish = p.category === 'free' || p.category === 'ads' || p.category === 'flatrate';
         return '<a class="provider-chip' + (isFreeish ? ' free' : '') + '" href="' + link + '" target="_blank" rel="noopener">' +
           '<img src="' + IMG_BASE + 'w45' + p.logo_path + '" alt="">' +
-          '<span>' + (p.provider_name || '').replace(/</g, '') + '</span>' +
+          '<span>' + escapeHtml(p.provider_name || '') + '</span>' +
           '<span class="p-badge">' + (CAT_LABELS[p.category] || '') + '</span></a>';
       }).join('');
       block.classList.remove('hidden');
@@ -2529,11 +3134,12 @@
     try {
       const data = await apiGet('/' + tmdbType + '/' + movie.id + '/recommendations', {});
       if (token !== resultRevealToken) return;
-      const items = (data.results || []).filter(m => m.poster_path).slice(0, 10).map(normalizeMediaItem);
+      const items = (data.results || []).filter(m => m.poster_path).slice(0, 10)
+        .map(m => normalizeMediaItem(m, tmdbType));
       if (items.length === 0) return;
 
       row.innerHTML = items.map((m, i) =>
-        '<div class="similar-item" data-idx="' + i + '"><img src="' + IMG_BASE + 'w185' + m.poster_path + '" alt=""><div class="s-title">' + (m.title || '').replace(/</g, '') + '</div></div>'
+        '<div class="similar-item" data-idx="' + i + '"><img src="' + IMG_BASE + 'w185' + m.poster_path + '" alt=""><div class="s-title">' + escapeHtml(m.title || '') + '</div></div>'
       ).join('');
       row.querySelectorAll('.similar-item').forEach((el, i) => {
         el.addEventListener('click', () => {
@@ -2563,18 +3169,28 @@
   // показывается сразу, без лишнего запроса. А вот discover/movie страну
   // вообще не отдаёт (она есть только в полной карточке фильма), поэтому
   // для фильмов страна дозагружается отдельным запросом /movie/{id}.
-  async function loadMovieCountry(movie, token) {
-    if (movie.media_type !== 'movie') return;
+  async function loadResultCountry(movie, token) {
+    // Раньше здесь стояло `if (movie.media_type !== 'movie') return`, и это
+    // молча съедало страну у части фильмов. Поле media_type появилось вместе с
+    // режимом сериалов, а карточки, сохранённые в Историю и Избранное до этого,
+    // его не имеют — для них условие давало `undefined !== 'movie'` и функция
+    // выходила, не сделав запроса. Весь остальной код определяет тип иначе:
+    // сериал — только если media_type равен 'tv', всё прочее считается фильмом.
+    // Приводим к тому же правилу.
+    const tmdbType = movie.media_type === 'tv' ? 'tv' : 'movie';
+
+    // У сериалов страна приходит прямо в discover-выдаче и уже отрисована
+    // синхронно в revealResult — тогда лишний запрос не нужен.
+    if (tmdbType === 'tv' && (movie.origin_country || []).length > 0) return;
+
     try {
-      const data = await apiGet('/movie/' + movie.id, {});
+      const data = await apiGet('/' + tmdbType + '/' + movie.id, {});
       if (token !== resultRevealToken) return;
-      const countries = data.production_countries || [];
-      if (countries.length === 0) return;
-      const genresEl = document.getElementById('resGenres');
-      const html = countries.slice(0, 3).map(c =>
-        '<span class="genre-tag country-tag">' + (COUNTRY_NAME_BY_CODE[c.iso_3166_1] || c.name || c.iso_3166_1) + '</span>'
-      ).join('');
-      genresEl.insertAdjacentHTML('afterbegin', html);
+      // production_countries — основное поле, но у части карточек оно пустое,
+      // хотя origin_country заполнено. Берём то, что есть.
+      const produced = (data.production_countries || []).map(c => c.iso_3166_1);
+      const codes = produced.length > 0 ? produced : (data.origin_country || []);
+      renderCountryTags(codes);
     } catch (e) {
       // Бонус-инфо, не критична — при ошибке страна просто не покажется.
     }
@@ -2618,14 +3234,14 @@
     const token = ++resultRevealToken;
     loadWatchProviders(movie, token);
     loadSimilar(movie, token);
-    loadMovieCountry(movie, token);
+    loadResultCountry(movie, token);
   }
 
   async function spin() {
     if (spinning) return;
     const filters = getFilters();
-    if (filters.genreIds.length === 0 && !filters.wantsAnime) {
-      showError('Выберите хотя бы один жанр!');
+    if (filters.genreIds.length === 0 && !filters.wantsAnime && filters.keywordIds.length === 0) {
+      showError('Выберите хотя бы один жанр или задайте тему!');
       return;
     }
     if (filters.yearFrom && filters.yearTo && Number(filters.yearFrom) > Number(filters.yearTo)) {
@@ -2691,10 +3307,10 @@
       const item = document.createElement('div');
       item.className = 'history-item';
       const rating = (m.vote_average || 0).toFixed(1);
-      item.innerHTML = `<div class="h-poster-wrap"><button class="h-remove" type="button" title="Удалить из истории">×</button><img src="${img}" alt=""></div><div class="h-title">${m.title || ''}</div><div class="h-meta"><span class="h-year">${year}</span><span class="h-rating">★ ${rating}</span></div>`;
+      item.innerHTML = `<div class="h-poster-wrap"><button class="h-remove" type="button" title="Удалить из истории">×</button><img src="${img}" alt=""></div><div class="h-title">${escapeHtml(m.title || '')}</div><div class="h-meta"><span class="h-year">${year}</span><span class="h-rating">★ ${rating}</span></div>`;
       item.querySelector('.h-remove').addEventListener('click', (e) => {
         e.stopPropagation();
-        removeFromHistory(m.id);
+        removeFromHistory(m);
         renderHistoryModal();
       });
       item.addEventListener('click', () => {
@@ -2723,6 +3339,9 @@
     saveHistoryToStorage();
     updateHistoryCount();
     renderHistoryModal();
+    // Изменились сразу сотни тайтлов — поштучной правкой тут не обойтись,
+    // нужен настоящий пересчёт.
+    schedulePoolCountUpdate();
   });
 
   document.getElementById('watchHeartBtn').addEventListener('click', () => {
@@ -2918,12 +3537,18 @@
     // замедляются к 95% — настоящую скорость сети заранее не узнать, но так
     // видно, что процесс идёт, а не завис.
     let fakePercent = 0;
-    fullMovieProgressTimer = setInterval(() => {
+    const tickProgress = () => {
       if (myToken !== fullMovieSearchToken) { clearInterval(fullMovieProgressTimer); return; }
-      fakePercent += Math.max(0.3, (95 - fakePercent) / 40);
+      fakePercent += Math.max(0.8, (95 - fakePercent) / 25);
       if (fakePercent > 95) fakePercent = 95;
       fullMovieBtn.textContent = 'Ищем… ' + Math.floor(fakePercent) + '%';
-    }, 200);
+    };
+    // Первый тик — сразу, не дожидаясь конца интервала. Иначе первые 200 мс на
+    // кнопке висело статичное "Ищем… 0%", а если запрос успевал уложиться в это
+    // время (или падал с ошибкой сразу), проценты не показывались вообще —
+    // выглядело так, будто их вырезали.
+    tickProgress();
+    fullMovieProgressTimer = setInterval(tickProgress, 150);
 
     try {
       const enrichment = await fetchWatchEnrichment(movie);
@@ -2999,15 +3624,106 @@
     }
   }
 
-  // --- Отзывы с TMDb (случайные, под постером) ---
+  // --- Отзывы с TMDb (под постером) ---
   // Отзывы у TMDb — это текст, который ввёл сам пользователь, а не одно из
-  // "переводимых" полей (как overview/title) — своего перевода на русский у
-  // них нет, поэтому в основном они на английском независимо от языка
-  // запроса. Показываем 2-3 случайных отзыва (не все — их бывает много и
-  // они длинные), с обрезкой длинного текста и ссылкой "читать полностью" на
-  // страницу отзыва на TMDb.
+  // "переводимых" полей (как overview/title). Своего перевода у них нет, и
+  // language=ru-RU эндпоинт /reviews не переводит, а ФИЛЬТРУЕТ — оставляет
+  // только русские отзывы, которых практически не существует. Поэтому отзывы
+  // запрашиваются без language (см. noLanguage в apiGet) и приходят почти
+  // всегда на английском, а на русский их переводит Gemini — см. ниже.
   const reviewsBtn = document.getElementById('reviewsBtn');
   const reviewsBox = document.getElementById('reviewsBox');
+
+  // --- Перевод отзывов через Gemini ---
+  //
+  // ⚠️ СЮДА НУЖНО ВСТАВИТЬ СВОЙ КЛЮЧ. Взять бесплатно (карта не нужна):
+  // https://aistudio.google.com/apikey — кнопка "Create API key".
+  // Пока строка пустая, всё работает как раньше: отзывы просто показываются
+  // на английском, никаких ошибок и лишних запросов.
+  //
+  // Ключ, как и ключи TMDb/YouTube выше, лежит прямо в коде и виден любому,
+  // кто откроет исходник страницы. Пока на проекте НЕ подключён биллинг, это
+  // терпимо: украсть по нему можно только бесплатную квоту, а не деньги.
+  // Если когда-нибудь включишь платный тариф — ключ отсюда надо убрать.
+  //
+  // Важно: Gemini API доступен не везде. Узбекистан в списке разрешённых
+  // регионов есть, России и Беларуси в нём нет — оттуда запросы будут падать,
+  // и отзывы останутся на английском (приложение это переживает штатно).
+  const GEMINI_API_KEY = 'AQ.Ab8RN6KE_NCrmZUxmyOgo-h8gDd8WGwOk0HvEmzIsNFf8UCoug';
+  // Flash-Lite — самый быстрый и дешёвый из стабильных, для перевода за глаза,
+  // и лимиты бесплатного тарифа у него самые щедрые.
+  const GEMINI_MODEL = 'gemini-3.5-flash-lite';
+  const GEMINI_TIMEOUT_MS = 25000;
+
+  // Кэш переводов: id отзыва -> перевод. Один и тот же отзыв переводится ровно
+  // один раз за всё время, повторные открытия карточки бесплатны и мгновенны.
+  const REVIEW_TRANSLATION_KEY = 'movieRouletteReviewTranslations_v1';
+  const REVIEW_TRANSLATION_LIMIT = 400; // чтобы кэш не рос бесконечно
+
+  function loadReviewTranslations() {
+    try {
+      const raw = localStorage.getItem(REVIEW_TRANSLATION_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return (parsed && typeof parsed === 'object') ? parsed : {};
+    } catch (e) { return {}; }
+  }
+  let reviewTranslations = loadReviewTranslations();
+
+  function saveReviewTranslations() {
+    try {
+      const keys = Object.keys(reviewTranslations);
+      if (keys.length > REVIEW_TRANSLATION_LIMIT) {
+        // Простое усечение: оставляем последние добавленные (порядок ключей в
+        // объекте сохраняется), самые старые выбрасываем.
+        const trimmed = {};
+        keys.slice(keys.length - REVIEW_TRANSLATION_LIMIT).forEach(k => { trimmed[k] = reviewTranslations[k]; });
+        reviewTranslations = trimmed;
+      }
+      localStorage.setItem(REVIEW_TRANSLATION_KEY, JSON.stringify(reviewTranslations));
+    } catch (e) {}
+  }
+
+  // Переводит сразу все отзывы одним запросом — так тратится одна единица
+  // дневной квоты на фильм, а не три. Ответ просим строго в JSON, чтобы не
+  // разбирать свободный текст и не угадывать, где кончился один отзыв.
+  // Возвращает массив строк той же длины или null, если что-то пошло не так —
+  // в этом случае вызывающий код просто оставляет английский оригинал.
+  async function translateReviewsWithGemini(texts) {
+    if (!GEMINI_API_KEY || texts.length === 0) return null;
+    const url = 'https://generativelanguage.googleapis.com/v1beta/models/' +
+      GEMINI_MODEL + ':generateContent?key=' + encodeURIComponent(GEMINI_API_KEY);
+    const prompt =
+      'Переведи на русский язык каждый элемент входного JSON-массива. Это отзывы зрителей о фильме. ' +
+      'Переводи живо и естественно, сохраняя тон и оценку автора, не сокращай и не дополняй. ' +
+      'Верни ТОЛЬКО JSON-массив строк той же длины и в том же порядке.\n\n' +
+      JSON.stringify(texts);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.2, responseMimeType: 'application/json' }
+        })
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      const raw = data && data.candidates && data.candidates[0] &&
+        data.candidates[0].content && data.candidates[0].content.parts &&
+        data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text;
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed) || parsed.length !== texts.length) return null;
+      return parsed.map(s => typeof s === 'string' ? s : '');
+    } catch (e) {
+      return null; // нет сети, тайм-аут, регион, кончилась квота — не критично
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 
   function resetReviewsButton() {
     // Явно снимаем hidden — клик "Отзывы" на предыдущем фильме прячет кнопку
@@ -3026,6 +3742,13 @@
   // постером не мелькали лишние звёздочки и подчёркивания.
   function stripReviewMarkdown(text) {
     return (text || '')
+      // Часть отзывов на TMDb написана прямо с HTML-тегами (встречаются <a
+      // href=...>, <br>, <em>). Текст мы вставляем через escapeHtml, поэтому
+      // теги не выполнялись, но показывались читателю как есть — посреди
+      // предложения торчала строка вида <a href="http://...">. Вырезаем
+      // разметку, оставляя её содержимое.
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
       .replace(/\*\*(.*?)\*\*/g, '$1')
       .replace(/\*(.*?)\*/g, '$1')
       .replace(/_{1,2}(.*?)_{1,2}/g, '$1')
@@ -3034,7 +3757,66 @@
       .trim();
   }
 
-  function renderReviews(reviews) {
+  // Сколько отзывов реально помещается рядом с постером.
+  //
+  // Смысл блока отзывов был в том, чтобы занять пустоту под постером: колонка
+  // постера всегда ниже колонки с описанием, и это место просто пустовало.
+  // Жёсткие "ровно 3" под эту задачу не подходили — у одного фильма оставалась
+  // дыра, у другого отзывы вылезали за карточку и делали её выше, чем нужно.
+  // Поэтому рисуем с запасом, а лишние убираем, пока колонка постера не станет
+  // не выше колонки с описанием.
+  const MAX_REVIEWS_MOBILE = 3;
+
+  // Высота содержимого колонки постера: сумма высот детей плюс отступы между
+  // ними. Через scrollHeight мерить нельзя — у колонки overflow: visible, и
+  // она растянута гридом на всю высоту строки, поэтому scrollHeight покажет
+  // высоту строки, а не реального содержимого.
+  function posterColContentHeight(col) {
+    const visible = Array.from(col.children).filter(ch => !ch.classList.contains('hidden'));
+    const gapValue = getComputedStyle(col).rowGap || getComputedStyle(col).gap || '0';
+    const gap = parseFloat(gapValue) || 0;
+    const sum = visible.reduce((total, ch) => total + ch.getBoundingClientRect().height, 0);
+    return sum + gap * Math.max(0, visible.length - 1);
+  }
+
+  function fitReviewsToColumn() {
+    const items = Array.from(reviewsBox.querySelectorAll('.review-item'));
+    if (items.length === 0) return 0;
+
+    // На телефоне раскладка одноколоночная — пустого места сбоку не бывает,
+    // подгонять не подо что. Просто ограничиваем разумным числом.
+    if (window.matchMedia('(max-width: 520px)').matches) {
+      items.slice(MAX_REVIEWS_MOBILE).forEach(el => el.remove());
+      return Math.min(items.length, MAX_REVIEWS_MOBILE);
+    }
+
+    const col = document.querySelector('.result-poster-col');
+    const body = document.querySelector('.result-body');
+    if (!col || !body) return items.length;
+
+    const available = body.getBoundingClientRect().height;
+    let kept = items.length;
+    // Хотя бы один отзыв оставляем всегда, даже если места впритык — иначе
+    // кнопка "Отзывы" исчезала бы, не показав ничего.
+    while (kept > 1 && posterColContentHeight(col) > available) {
+      items[kept - 1].remove();
+      kept--;
+    }
+    return kept;
+  }
+
+  // Пока постер не загрузился, его высота равна нулю, и отзывов помещается
+  // "больше", чем на самом деле. Обычно картинка уже в кэше — её грузят заранее,
+  // пока крутится лента, — но если нет, пересчитываем после загрузки.
+  function refitReviewsWhenPosterReady() {
+    const poster = document.getElementById('resPoster');
+    if (!poster || poster.complete) return;
+    poster.addEventListener('load', () => fitReviewsToColumn(), { once: true });
+  }
+
+  // translations — массив той же длины, что и reviews, либо null. Там, где
+  // перевод есть, показывается он, а оригинал прячется под ссылкой-переключателем.
+  function renderReviews(reviews, translations) {
     if (reviews.length === 0) {
       reviewsBox.innerHTML = '<div class="review-empty">На TMDb пока нет отзывов на этот фильм.</div>';
       reviewsBox.classList.remove('hidden');
@@ -3043,25 +3825,59 @@
     // Никакой обрезки — берутся уже отобранные короткие отзывы целиком (см.
     // pickShortReviews), поэтому в карточке всегда полный текст без "читать
     // полностью".
-    reviewsBox.innerHTML = reviews.map(r => {
-      const text = stripReviewMarkdown(r.content);
+    reviewsBox.innerHTML = reviews.map((r, i) => {
+      const original = stripReviewMarkdown(r.content);
+      const translated = translations && translations[i] ? stripReviewMarkdown(translations[i]) : '';
       const rating = r.author_details && r.author_details.rating ? ' · ★' + r.author_details.rating : '';
       const author = (r.author || (r.author_details && r.author_details.username) || 'Аноним');
-      return '<div class="review-item">' +
+      const toggle = translated
+        ? '<button class="review-toggle" type="button" data-mode="ru">показать оригинал</button>'
+        : '';
+      return '<div class="review-item" data-original="' + escapeHtml(original) + '"' +
+        (translated ? ' data-translated="' + escapeHtml(translated) + '"' : '') + '>' +
         '<div class="review-author">' + escapeHtml(author) + '<span class="review-rating">' + rating + '</span></div>' +
-        '<div class="review-text">' + escapeHtml(text) + '</div>' +
+        '<div class="review-text">' + escapeHtml(translated || original) + '</div>' +
+        toggle +
         '</div>';
     }).join('');
-    reviewsBox.classList.remove('hidden');
+
+    reviewsBox.classList.remove('hidden'); // измерять можно только видимое
+    const kept = fitReviewsToColumn();
+    refitReviewsWhenPosterReady();
+
+    reviewsBox.querySelectorAll('.review-toggle').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const item = btn.closest('.review-item');
+        const showingRu = btn.dataset.mode === 'ru';
+        item.querySelector('.review-text').textContent = showingRu
+          ? item.dataset.original
+          : item.dataset.translated;
+        btn.dataset.mode = showingRu ? 'en' : 'ru';
+        btn.textContent = showingRu ? 'показать перевод' : 'показать оригинал';
+      });
+    });
+    return kept;
   }
 
-  // Берём ровно 3 (или меньше, если отзывов не хватает) самых коротких
-  // отзыва — раньше показывали случайные и обрезали длинные по символам, но
+  // Сколько отзывов запрашивается "с запасом" перед подгонкой по высоте.
+  // Больше двадцати TMDb на одной странице и не отдаёт.
+  const MAX_REVIEW_CANDIDATES = 10;
+
+  // Берём самые короткие — раньше показывали случайные и обрезали длинные по символам, но
   // "обрезано на middle слова" смотрится некрасиво и всегда нужна ссылка
   // "читать полностью". Короткие отзывы обычно и так укладываются в 1-3
   // предложения — их можно показать целиком и они примерно одной длины.
+  // Нижняя граница нужна, чтобы "самый короткий" не означало "пустой": у
+  // популярных фильмов самые короткие отзывы — это "Amazing movie" и "This
+  // movie is great", технически короткие, но читать в них нечего. Сначала
+  // берём самые короткие из тех, где есть хотя бы пара предложений, и только
+  // если таких не набралось на нужное количество — добираем совсем мелкими.
+  const MIN_REVIEW_LENGTH = 120;
   function pickShortReviews(all, count) {
-    return all.slice().sort((a, b) => (a.content || '').length - (b.content || '').length).slice(0, count);
+    const byLength = all.slice().sort((a, b) => (a.content || '').length - (b.content || '').length);
+    const meaty = byLength.filter(r => (r.content || '').length >= MIN_REVIEW_LENGTH);
+    const rest = byLength.filter(r => (r.content || '').length < MIN_REVIEW_LENGTH);
+    return meaty.concat(rest).slice(0, count);
   }
 
   function escapeHtml(str) {
@@ -3070,17 +3886,44 @@
     return div.innerHTML;
   }
 
+  // Каждый показ отзывов получает свой номер: если пользователь успел уйти к
+  // другому фильму, пока переводились отзывы предыдущего, запоздавший перевод
+  // не должен затирать уже показанные отзывы нового фильма.
+  let reviewsToken = 0;
+
   async function handleShowReviews() {
     const movie = currentResultMovie;
     if (!movie) return;
+    const myToken = ++reviewsToken;
     reviewsBtn.disabled = true;
     reviewsBtn.textContent = 'Загрузка…';
     try {
       const tmdbType = movie.media_type === 'tv' ? 'tv' : 'movie';
-      const data = await apiGet('/' + tmdbType + '/' + movie.id + '/reviews', {});
-      const all = data.results || [];
-      renderReviews(pickShortReviews(all, 3));
+      const data = await apiGet('/' + tmdbType + '/' + movie.id + '/reviews', {}, { noLanguage: true });
+      if (myToken !== reviewsToken) return;
+      // Берём с запасом — сколько из них реально поместится рядом с постером,
+      // решает fitReviewsToColumn внутри renderReviews и возвращает это число.
+      let chosen = pickShortReviews(data.results || [], MAX_REVIEW_CANDIDATES);
+
+      // Что-то уже переводили раньше — берём из кэша, за остальным идём в Gemini.
+      const cached = chosen.map(r => reviewTranslations[r.id] || null);
+      const kept = renderReviews(chosen, cached.some(Boolean) ? cached : null);
+      // Обрезаем список по факту показанного, чтобы не переводить (и не тратить
+      // квоту на) отзывы, которые всё равно не влезли и были удалены.
+      chosen = chosen.slice(0, kept);
       reviewsBtn.classList.add('hidden');
+
+      const missing = chosen.filter((r, i) => !cached[i] && (r.content || '').trim());
+      if (GEMINI_API_KEY && missing.length > 0) {
+        const fresh = await translateReviewsWithGemini(missing.map(r => stripReviewMarkdown(r.content)));
+        if (myToken !== reviewsToken) return;
+        if (fresh) {
+          missing.forEach((r, i) => { if (fresh[i]) reviewTranslations[r.id] = fresh[i]; });
+          saveReviewTranslations();
+          renderReviews(chosen, chosen.map(r => reviewTranslations[r.id] || null));
+        }
+        // Если перевести не вышло — на экране просто остаётся английский оригинал.
+      }
     } catch (e) {
       reviewsBox.innerHTML = '<div class="review-empty">Не удалось загрузить отзывы.</div>';
       reviewsBox.classList.remove('hidden');
@@ -3105,7 +3948,7 @@
       const item = document.createElement('div');
       item.className = 'history-item';
       const rating = (m.vote_average || 0).toFixed(1);
-      const isWatched = watchedIds.has(m.id);
+      const isWatched = watchedIds.has(mediaKey(m));
       // Если фильм уже отмечен просмотренным — крестик убираем совсем (нельзя
       // случайно стереть то, на чём строится статистика), вместо него значок
       // "просмотрено". Иначе — маленькая кнопка "отметить просмотренным".
@@ -3115,12 +3958,12 @@
       const removeBtn = isWatched
         ? ''
         : '<button class="h-remove" type="button" title="Убрать из избранного">×</button>';
-      item.innerHTML = `<div class="h-poster-wrap">${watchMark}${removeBtn}<img src="${img}" alt=""></div><div class="h-title">${m.title || ''}</div><div class="h-meta"><span class="h-year">${year}</span><span class="h-rating">★ ${rating}</span></div>`;
+      item.innerHTML = `<div class="h-poster-wrap">${watchMark}${removeBtn}<img src="${img}" alt=""></div><div class="h-title">${escapeHtml(m.title || '')}</div><div class="h-meta"><span class="h-year">${year}</span><span class="h-rating">★ ${rating}</span></div>`;
       const removeEl = item.querySelector('.h-remove');
       if (removeEl) {
         removeEl.addEventListener('click', (e) => {
           e.stopPropagation();
-          removeFromWatchlist(m.id);
+          removeFromWatchlist(m);
           renderFavoritesModal();
         });
       }
@@ -3165,16 +4008,16 @@
   const statsModal = document.getElementById('statsModal');
   const statsBody = document.getElementById('statsBody');
 
+  // Только целые часы — ни минут, ни дней. Раньше суммарное время выводилось
+  // как "12 дн 7 ч", а отдельные тайтлы как "2 ч 30 мин"; читать такое в
+  // статистике неудобно, круглые часы нагляднее.
   function formatStatMinutes(mins) {
     const n = Math.round(mins);
-    if (n <= 0) return '0 мин';
-    const h = Math.floor(n / 60);
-    const m = n % 60;
-    if (h === 0) return m + ' мин';
-    if (h < 24) return h + ' ч' + (m > 0 ? ' ' + m + ' мин' : '');
-    const d = Math.floor(h / 24);
-    const rh = h % 24;
-    return d + ' дн' + (rh > 0 ? ' ' + rh + ' ч' : '');
+    if (n <= 0) return '0 ч';
+    const hours = Math.round(n / 60);
+    // Меньше получаса округлилось бы в "0 ч", что выглядит как отсутствие данных.
+    if (hours === 0) return 'меньше часа';
+    return hours.toLocaleString('ru-RU') + ' ч';
   }
 
   function computeStats() {
@@ -3310,7 +4153,7 @@
 
       document.getElementById('subtitleText').textContent = mediaType === 'tv'
         ? 'Выберите жанры и крутите — сериал выбирается случайно из базы TMDb'
-        : 'Выберите жанры и крутите — фильм выбирается случайно из базы TMDb (сотни тысяч фильмов)';
+        : 'Выберите жанры и крутите — фильм выбирается случайно из базы TMDb';
 
       hideError();
       resultCard.classList.remove('show');
